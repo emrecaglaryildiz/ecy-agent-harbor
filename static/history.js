@@ -32,7 +32,7 @@ function confirmDeletion(kind,data){
   $('#confirm-delete-description').textContent='Ajan listeden kaldırılacak ve kayıtlı API anahtarı silinecek. Eski görev çıktıları ve ajan adı geçmişte korunacak. Bu işlem geri alınamaz.';
  }else{
   $('#confirm-delete-title').textContent=data.all?'Görev geçmişi temizlensin mi?':data.ids.length+' görev silinsin mi?';
-  $('#confirm-delete-description').textContent=(data.all?(state.user.role==='admin'?'Biten tüm görevler':'Sana ait biten tüm görevler'):'Seçilen görevler')+'; çıktıları, logları, onay kayıtları ve sunucuya kaydedilen dosyalarıyla birlikte kalıcı olarak silinecek. Çalışan ve onay bekleyen görevler korunur. Harcama limiti sıfırlanmaz. Bu işlem geri alınamaz.';
+  $('#confirm-delete-description').textContent=(data.all?(state.user.role==='admin'?'Biten tüm görevler':'Sana ait biten tüm görevler'):'Seçilen görevler')+'; çıktıları, logları, onay kayıtları ve sunucuya kaydedilen dosyalarıyla birlikte kalıcı olarak silinecek. Çalışan ve onay bekleyen görevler korunur. Kullanım toplamı korunur. Bu işlem geri alınamaz.';
  }
  $('#confirm-delete-dialog').showModal();
 }

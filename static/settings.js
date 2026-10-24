@@ -48,7 +48,7 @@ async function loadAgentSettings(){
   const data=await api('agents');agentSettings=data.agents;
   $('#provider-settings-list').innerHTML=agentSettings.map(a=>{
    const test=a.last_test;
-   return `<section class="panel provider-card"><div class="provider-card-top">${agentAvatar(a)}<div><h3>${esc(a.name)}</h3><p>${esc(a.role)} · ${esc(a.model)}</p></div><span class="badge ${!a.enabled?'cancelled':test?.ok?'completed':test?'failed':'queued'}">${!a.enabled?'Devre dışı':test?.ok?'Bağlantı doğrulandı':test?'Test başarısız':a.configured?'Test bekliyor':'API ekle'}</span></div><div class="provider-address">${esc(a.endpoint||'Henüz API adresi eklenmedi')}</div><div class="provider-facts"><span>${esc(a.provider)}</span><span>${a.has_api_key?'🔒 Anahtar kayıtlı':'Anahtar yok'}</span><span>$${a.price.toFixed(6)} / 1K token</span></div>${test?`<p class="connection-result ${test.ok?'':'error'}">${esc(test.message)} · ${test.latency_ms} ms · ${date(test.checked_at)}</p>`:''}<div class="detail-actions"><button type="button" class="button secondary" data-edit-agent="${esc(a.id)}">Düzenle</button><button type="button" class="button secondary" data-toggle-agent="${esc(a.id)}" data-enabled="${!a.enabled}">${a.enabled?'Pasife al':'Etkinleştir'}</button><button type="button" class="button secondary danger" data-delete-agent="${esc(a.id)}">Sil</button><button type="button" class="button primary" data-test-agent="${esc(a.id)}" ${a.configured&&a.enabled?'':'disabled'}>Bağlantıyı test et ↗</button></div></section>`;
+   return `<section class="panel provider-card"><div class="provider-card-top">${agentAvatar(a)}<div><h3>${esc(a.name)}</h3><p>${esc(a.role)} · ${esc(a.model)}</p></div><span class="badge ${!a.enabled?'cancelled':test?.ok?'completed':test?'failed':'queued'}">${!a.enabled?'Devre dışı':test?.ok?'Bağlantı doğrulandı':test?'Test başarısız':a.configured?'Test bekliyor':'API ekle'}</span></div><div class="provider-address">${a.endpoint?esc(a.endpoint):esc(I18n.t('Henüz API adresi eklenmedi'))}</div><div class="provider-facts"><span>${esc(a.provider)}</span><span>${a.has_api_key?'🔒 Anahtar kayıtlı':'Anahtar yok'}</span><span>$${a.price.toFixed(6)} / 1K token</span></div>${test?`<p class="connection-result ${test.ok?'':'error'}">${esc(test.message)} · ${test.latency_ms} ms · ${date(test.checked_at)}</p>`:''}<div class="detail-actions"><button type="button" class="button secondary" data-edit-agent="${esc(a.id)}">Düzenle</button><button type="button" class="button secondary" data-toggle-agent="${esc(a.id)}" data-enabled="${!a.enabled}">${a.enabled?'Pasife al':'Etkinleştir'}</button><button type="button" class="button secondary danger" data-delete-agent="${esc(a.id)}">Sil</button><button type="button" class="button primary" data-test-agent="${esc(a.id)}" ${a.configured&&a.enabled?'':'disabled'}>Bağlantıyı test et ↗</button></div></section>`;
   }).join('');
  }catch(error){toast(error.message);}
 }
@@ -110,7 +110,7 @@ $('#access-form').onsubmit=async event=>{
 
 async function downloadReport(id,format,run=null){
  try{
-  const path='/api/tasks/'+encodeURIComponent(id)+'/export?format='+format+(run?'&run='+encodeURIComponent(run):'');
+  const path='/api/tasks/'+encodeURIComponent(id)+'/export?format='+format+'&lang='+uiLanguage()+(run?'&run='+encodeURIComponent(run):'');
   const response=await fetch(path);
   if(!response.ok){const data=await response.json();throw new Error(data.error||'Rapor oluşturulamadı');}
   const blob=await response.blob();const url=URL.createObjectURL(blob);

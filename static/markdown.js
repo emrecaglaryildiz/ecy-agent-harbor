@@ -1,6 +1,6 @@
 function renderMarkdown(source){
  if(!window.marked||!window.DOMPurify)return '<p>'+String(source??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+'</p>';
- const cited=String(source??'').replace(/\[dosya:([a-f0-9]{32}):L(\d+)-L(\d+)\]/g,(_,id,start,end)=>`[Kaynak L${start}–L${end}](/api/files/${id}?start=${start})`);
+ const cited=String(source??'').replace(/\[dosya:([a-f0-9]{32}):L(\d+)-L(\d+)\]/g,(_,id,start,end)=>`[${I18n.t("Kaynak")} L${start}–L${end}](/api/files/${id}?start=${start})`);
  const html=marked.parse(cited,{gfm:true,breaks:true});
  const fragment=DOMPurify.sanitize(html,{
   RETURN_DOM_FRAGMENT:true,
@@ -46,7 +46,7 @@ document.addEventListener('click',async event=>{
  const button=event.target.closest('[data-continue-run]');if(!button)return;
  button.disabled=true;
  try{
-  const result=await api('tasks/'+button.dataset.continueTask+'/continue',{run_id:button.dataset.continueRun});
+  const result=await api('tasks/'+button.dataset.continueTask+'/continue',{run_id:button.dataset.continueRun,language:uiLanguage()});
   await refresh();await openTask(result.id);toast('Devam yanıtı için yeni görev başlatıldı');
  }catch(error){toast(error.message);button.disabled=false;}
 });
