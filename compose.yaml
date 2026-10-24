@@ -5,6 +5,7 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       APP_MODE: live
+      MAX_FILE_BYTES: ${MAX_FILE_BYTES:-33554432}
       MAX_QUEUE: ${MAX_QUEUE:-50}
       WEB_MAX_TOOL_STEPS: ${WEB_MAX_TOOL_STEPS:-12}
       TASK_WORKERS: ${TASK_WORKERS:-2}

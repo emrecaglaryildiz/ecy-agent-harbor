@@ -4,6 +4,13 @@ Kendi AI ajanlarını API adresleri ve anahtarlarıyla yönetebileceğin, tek aj
 
 ## Özellikler
 
+- Canlı yanıt: sağlayıcının SSE akışı geldikçe görünür metin saklanır; görev ekranı yaklaşık iki saniyede güncellenir. Akış desteklemeyen uyumlu uçlarda normal JSON yanıtı alınır.
+- Proje alanları, tekrar kullanılabilir görev şablonları ve önceki analizden devam etme.
+- Log/JSON/CSV/Markdown/metin/PDF/görsel yükleme; metin dosyalarının tüm parçalarını kapsayan analiz ve satır aralıklı kaynak atıfları.
+- Bağımsız uzman görüşleri → isteğe bağlı karşılıklı eleştiri → seçtiğin baş uzman sentezi.
+- Hata öncesinde tek kontrollü tekrar, açık seçimle yedek ajan ve başarısız adımı elle yeniden çalıştırma.
+- Kalıcı zamanlamalar, duraklatma ve Telegram teslimat geçmişi.
+
 - Tek ajan görevi veya paralel ajan topluluğu ve seçilebilir baş uzman sentezi.
 - API adresi ve anahtarıyla sağlayıcı yönetimi; yerel inference ve OpenAI uyumlu servisler.
 - Görev bazında açılıp kapatılan internet erişimi ve Playwright MCP kurulumu.
@@ -13,19 +20,23 @@ Kendi AI ajanlarını API adresleri ve anahtarlarıyla yönetebileceğin, tek aj
 
 ## Ekran görüntüleri
 
-Aşağıdaki görüntüler geliştirme sırasında test verileriyle alınmıştır. Bazı görseller önceki arayüz sürümünü gösterir; güncel sürümde harcama limiti yoktur ve uygulama adı ECY Agent Harbor'dır.
+Güncel sürümün ekranları, gerçek sağlayıcı anahtarı kullanılmadan ayrı test alanında örnek verilerle alınmıştır.
 
-### Görev stüdyosu — karanlık tema
+### Görev stüdyosu: dosyalar, eleştiri turu ve yedek ajan
 
-![Karanlık temada görev stüdyosu](docs/preview-dark.png)
+![ECY Agent Harbor görev stüdyosu](docs/preview-studio-v2.png)
 
-### Markdown raporları
+### Proje alanları ve dosya kütüphanesi
 
-![Markdown başlık, tablo ve kod gösterimi](docs/preview-markdown.png)
+![Proje alanı ve kanıt dosyaları](docs/preview-projects.png)
 
-### İnternet araştırması
+### Kaynaklı rapor ve log satırlarına dönüş
 
-![Görev bazında internet erişimi](docs/preview-internet.png)
+![Kaynak atıflı Markdown raporu](docs/preview-evidence.png)
+
+### Zamanlanmış görevler ve Telegram
+
+![Otomasyon yönetimi](docs/preview-automation.png)
 
 ## Çalıştırma
 
@@ -185,3 +196,17 @@ Modelin arama sorguları Google'a, ziyaret adresleri ilgili web sitelerine gider
 Araç turundaki `reasoning_content` ve varsa `reasoning_details`, sağlayıcıya opak biçimde geri iletilir; rapor yerine kullanıcıya gösterilmez. Web adımları bittiğinde araçlar `tool_choice=none` ile kapatılır ve açıkça final raporu istenir. Sağlayıcı normal bitiş bildirdiği halde content boşsa aramaları tekrarlamadan bir ek finalleştirme çağrısı denenir. İki boş yanıt da dahil tüm çağrıların kullanım tutarları kaydedilir.
 
 Metin yine boşsa görev `incomplete / empty_response` olur; tamamlandı sayılmaz, araç onayı veya judge akışı tetiklenmez. Arayüz çalışan görevlere ait bekleme yazısını bitmiş boş sonuçlarda göstermez. Kaynak ve model turu durumu private provider_state alanında saklanır; bu ham durum API yanıtına ve rapor indirmelerine eklenmez. **Kaynaklardan rapor üret** eski web işini tekrarlamadan kayıtlı konuşmayla finalleştirme yapar. Eski sürümde boş dönmüş, kaynak durumu saklanmamış görevler **Raporu yeniden üret** ile yeni araştırma başlatabilir; geçmişte kaydedilmeyen metin geriye dönük geri getirilemez.
+
+## Yeni iş akışlarını kullanma
+
+1. Üstteki proje seçicisinden **Genel alan** veya bir proje seç. **Projeler & dosyalar** ekranında proje talimatlarını düzenle ve dosyalarını yönet. Bu kişisel çalışma alanındaki projeler roller arasında paylaşılır; kullanıcılar ayrı tenant değildir.
+2. Dosyalarını stüdyoda yükleyip kutularından seç. Yalnızca seçilen dosyalar görev sağlayıcılarına aktarılır. Metin UTF-8 olmalıdır. Varsayılan dosya sınırı 32 MB, görev başına en fazla 20 dosyadır; bu sınır model yanıtı veya harcama kotası değildir. `MAX_FILE_BYTES` sunucu yükleme sınırını değiştirebilir.
+3. Büyük metinlerin her parçası ayrı incelenir. Ara çıktılar görevde korunur; bulgular kaynak kimliği/satır aralığıyla birleştirilir. Birleştirme modeli özeti küçültemezse görev açık hatayla durur; veri sessizce kırpılmaz. Bu işlem birden fazla sağlayıcı çağrısı ve ücret oluşturabilir. Görselleri görsel destekleyen OpenAI uyumlu model işler. PDF için metin çıkarımı yapılır; taranmış PDF OCR içermez.
+4. Ajan topluluğunda en az iki uzmanla **karşılıklı eleştiri turu**nu açabilirsin. Baş uzman, uzlaşılan bulguları ve tartışmalı noktaları kaynaklarıyla birleştirir. Kaynak envanteri, dosya aralığının varlığını kontrol eder; bir iddianın doğru olduğunu otomatik onaylamaz. Web bağlantıları modelin atıf yaptığı adresler olarak etiketlenir.
+5. **Şablon kaydet** görev ayarlarını, projeyi ve dosya seçimlerini saklar. **Zamanla** aynı ayarlarla aralıklı görev başlatır. İlk tarih tarayıcının yerel saatinde girilir; veritabanı epoch zamanını saklar. Uygulama açık olmalıdır. Kaçırılan aralıklar topluca çalıştırılmaz; aynı zamanlamanın açık görevi varsa çakışan çağrı yapılmaz. Yapılandırması geçersiz zamanlama açıklamayla duraklatılır.
+6. **Otomasyonlar → Telegram** bölümünde bot anahtarını ve sohbet kimliğini kaydet. Anahtar şifrelenir; boş bırakılırsa korunur. Etkinleştirilene kadar mesaj çıkmaz. Varsayılan mesaj kimlik/durum/USD tutarıdır; başlık ve ilk 1.000 karakterlik özeti göndermek ayrı seçimdir. Rapor bağlantısı için kendi erişilebilir uygulama adresini gir; bağlantı oturum gerektirir. Kaydetmek test mesajı göndermez. Telegram'ın `sendMessage` sözleşmesi kullanılır: [resmî API](https://core.telegram.org/bots/api#sendmessage).
+7. Teslimatı belirsiz Telegram mesajları otomatik tekrarlanmaz. Elle tekrar gönderme kopya mesaj oluşturabilir. Görev ekranındaki **Bu adımı yeniden dene** yalnızca seçilen başarısız/eksik adımın kayıtlı girdisini çalıştırır. Bu işlem önceki görevi silmez ve sağlayıcı tarafından ücretlendirilebilir.
+
+Yedek ajan varsayılan olarak kapalıdır. Seçilirse başarısız adım ayrı bir kayıtla yedek ajana verilir; başarısız çağrı geçmişten gizlenmez. Kısmi yanıt veya araç turundan sonra otomatik bağlantı tekrarı yapılmaz. İptal edilen görevin uçuşta olan çağrısı sağlayıcı tarafında bir süre daha sürebilir. Sağlayıcı kullanım bilgisi dönmezse tutar **tahmini** olarak etiketlenir. Modelin kendi bağlam/çıktı kapasitesi devam eder; uygulama normal model yanıtlarına çıktı token sınırı eklemez.
+
+Yedekleme için uygulama kapalıyken `data/` klasörünün tamamını koru; `master.key`, SQLite veritabanı, yüklenen dosyalar ve tarayıcı çalışma alanı bu klasördedir. GitHub ve dağıtım ZIP'i bu kişisel verileri içermez. Güncelleme mevcut veritabanına eklemeli geçişler uygular; farklı bir sürüme dönmeden önce güncelleme öncesi yedeği geri yüklemek gerekir.
