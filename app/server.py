@@ -17,6 +17,7 @@ from urllib.parse import urlparse, parse_qs
 from urllib.error import HTTPError, URLError
 
 from .adapters import adapter_for
+from .localization import language as ui_language, translate as translate_ui
 from . import workspace, files, pipeline, automation
 from .vault import encrypt, decrypt
 from .browser_mcp import BrowserMCP, status as browser_status, install as install_browser
@@ -427,6 +428,9 @@ def _create_task(user, body, continuation_context="", resume_state="", retry_sta
             raise ValueError("İnterneti açmadan önce ayarlardan Playwright MCP kurulumunu tamamla")
         if any(BY_ID[x]["provider"] != "openai-compatible" for x in ids + ([judge] if judge else []) + ([fallback] if fallback else [])):
             raise ValueError("İnternet modu OpenAI uyumlu araç çağrısı destekleyen ajanlar içindir; Hermes bridge'e bu görevde internet verilmedi")
+    lang = body.get('language', 'tr')
+    if lang not in ('tr', 'en'):
+        raise ValueError('Dil tr veya en olmalı')
     budget = reserve = 0.0
     tid = uuid.uuid4().hex
     from contextlib import nullcontext
@@ -442,6 +446,7 @@ def _create_task(user, body, continuation_context="", resume_state="", retry_sta
                    (tid, prompt.strip()[:70], prompt.strip(), mode, json.dumps(ids), judge, "queued", user["id"], now(), now(), budget, reserve, int(bool(body.get("tool_requested", False))), continuation_context, int(web_enabled), resume_state))
         db.execute("UPDATE tasks SET fallback_agent=?,retry_state=? WHERE id=?", (fallback, retry_state, tid))
         workspace.attach(db, tid, options)
+        db.execute('UPDATE tasks SET language=? WHERE id=?', (lang, tid))
         log(db, tid, "queued", f"Görev kuyruğa alındı · {user['name']}")
     return tid
 
@@ -713,6 +718,8 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def respond(self, code, data, cookie=None):
+        if isinstance(data, dict) and 'error' in data:
+            data = dict(data, error=translate_ui(data['error'], ui_language(self.headers.get('Accept-Language')), error=True))
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(code)
         self.headers_common("application/json; charset=utf-8")
@@ -784,6 +791,7 @@ class Handler(BaseHTTPRequestHandler):
                             if not runs:
                                 return self.respond(404, {"error": "Ajan çıktısı bulunamadı"})
                         report_task = task_dict(row)
+                        report_task['language'] = query.get('lang', [ui_language(self.headers.get('Accept-Language'))])[0]
                         report_task['sources'] = files.sources(db, tid)
                         content, content_type = export_report(report_task, runs, fmt, BY_ID, single=bool(run_id))
                         self.send_response(200)
@@ -806,7 +814,11 @@ class Handler(BaseHTTPRequestHandler):
                             "logs": [dict(r) for r in db.execute("SELECT * FROM logs WHERE task_id=? ORDER BY id", (tid,))]})
                 return self.respond(404, {"error": "Endpoint bulunamadı"})
             static = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/settings.js": ("settings.js", "text/javascript; charset=utf-8"), "/history.js": ("history.js", "text/javascript; charset=utf-8"), "/theme.js": ("theme.js", "text/javascript; charset=utf-8"), "/workspace.js": ("workspace.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
-            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js'):
+            if path == '/brand.svg':
+                static[path] = ('brand.svg', 'image/svg+xml')
+            if path == '/locales/en.json':
+                static[path] = ('locales/en.json', 'application/json; charset=utf-8')
+            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
                 return self.respond(404, {"error": "Bulunamadı"})
@@ -917,6 +929,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('Önceki görev bitmiş olmalı')
                     cfg = task_dict(row)
                     cfg['prompt'] = body.get('prompt', '')
+                    cfg['language'] = body.get('language', row['language'])
                     cfg['file_ids'] = [r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?', (tid,))]
                     prior = '\n\n'.join(r[0] or '' for r in db.execute('SELECT output FROM runs WHERE task_id=?', (tid,)))
                 return self.respond(201, {'id': create_task(user, cfg, continuation_context=prior)})
@@ -929,7 +942,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("Yalnızca bitmiş görevin başarısız/eksik adımı yeniden denenebilir")
                     request_state = run["request_state"]
                     file_ids = [r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?', (tid,))]
-                    next_body = {"prompt": task["prompt"], "agents": [run["agent_id"]], "mode": "single", "web_enabled": bool(task["web_enabled"]), "project_id": task["project_id"], "file_ids": file_ids}
+                    next_body = {"prompt": task["prompt"], "agents": [run["agent_id"]], "mode": "single", "web_enabled": bool(task["web_enabled"]), "project_id": task["project_id"], "file_ids": file_ids, "language": body.get("language", task["language"])}
                 next_id = create_task(user, next_body, retry_state=request_state)
                 return self.respond(201, {"id": next_id})
             if path.startswith("/api/tasks/") and path.endswith("/continue"):
@@ -941,7 +954,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("Devam ettirilecek eksik yanıt bulunamadı")
                     previous = (task["continuation_context"] + "\n\n" if task["continuation_context"] else "") + (run["output"] or "")
                     saved_state = run["provider_state"] if not (run["output"] or "").strip() else ""
-                    next_task = {"prompt": task["prompt"], "mode": "single", "agents": [run["agent_id"]], "web_enabled": bool(task["web_enabled"]) and not bool(saved_state), "project_id": task["project_id"], "file_ids": [r[0] for r in db.execute("SELECT file_id FROM task_files WHERE task_id=?", (tid,))]}
+                    next_task = {"prompt": task["prompt"], "mode": "single", "agents": [run["agent_id"]], "web_enabled": bool(task["web_enabled"]) and not bool(saved_state), "project_id": task["project_id"], "file_ids": [r[0] for r in db.execute("SELECT file_id FROM task_files WHERE task_id=?", (tid,))], "language": body.get("language", task["language"])}
                 return self.respond(201, {"id": create_task(user, next_task, continuation_context=previous if not saved_state else "", resume_state=saved_state)})
             if path.startswith("/api/approvals/"):
                 decide(user, path.split("/")[-1], body.get("decision"))

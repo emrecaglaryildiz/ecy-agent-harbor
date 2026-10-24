@@ -59,7 +59,10 @@ def send_one(server, opener=None):
         db.execute("UPDATE notifications SET status='sending' WHERE id=?", (row['id'],))
         summary = task['synthesis'] or next((r[0] for r in db.execute("SELECT output FROM runs WHERE task_id=? AND kind='participant' AND output IS NOT NULL ORDER BY created_at DESC", (task['id'],))), '')
     # Default notification contains only status and amount. Titles/output require an explicit setting.
-    text = f"ECY Agent Harbor · {task['status']}\nGörev: {task['id'][:8]}\nKullanım: ${task['cost']:.4f}"
+    from .localization import translate
+    en = task['language'] == 'en'
+    status = {'completed': 'Completed', 'failed': 'Failed', 'incomplete': 'Incomplete', 'cancelled': 'Cancelled', 'awaiting_approval': 'Awaiting approval'}.get(task['status'], task['status']) if en else task['status']
+    text = f"ECY Agent Harbor · {status}\n{'Task' if en else 'Görev'}: {task['id'][:8]}\n{'Usage' if en else 'Kullanım'}: ${task['cost']:.4f}"
     if cfg.get('include_summary'):
         text += '\n' + task['title'] + '\n\n' + (summary or task['error'] or '')[:1000]
     if cfg.get('origin'):

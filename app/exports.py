@@ -5,6 +5,8 @@ import threading
 from pathlib import Path
 from xml.sax.saxutils import escape
 
+from .localization import translate
+
 import reportlab
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
@@ -18,33 +20,41 @@ FONT_LOCK = threading.Lock()
 
 
 def markdown_report(task, runs, agents, single=False):
-    status = {"incomplete": "Yanıt eksik", "completed": "Tamamlandı", "running": "Çalışıyor", "failed": "Başarısız",
-              "queued": "Kuyrukta", "awaiting_approval": "Onay bekliyor", "cancelled": "İptal edildi"}
-    lines = ["# ECY Agent Harbor - Görev raporu", "", f"**Görev:** {task['title']}",
-             f"**Kimlik:** {task['id']}", f"**Oluşturulma (UTC):** {task['created_at']}",
-             f"**Durum:** {status.get(task['status'], task['status'])}",
-             f"**Maliyet:** ${task['cost']:.6f}", "", "## Görev girdisi", "", task["prompt"], ""]
+    lang = task.get('language', 'tr')
+    def label(tr, en):
+        return en if lang == 'en' else tr
+    status = {"incomplete": label("Yanıt eksik", "Incomplete response"), "completed": label("Tamamlandı", "Completed"),
+              "running": label("Çalışıyor", "Running"), "failed": label("Başarısız", "Failed"),
+              "queued": label("Kuyrukta", "Queued"), "awaiting_approval": label("Onay bekliyor", "Awaiting approval"),
+              "cancelled": label("İptal edildi", "Cancelled")}
+    lines = ["# ECY Agent Harbor - " + label("Görev raporu", "Task report"), "",
+             f"**{label('Görev', 'Task')}:** {task['title']}", f"**{label('Kimlik', 'ID')}:** {task['id']}",
+             f"**{label('Oluşturulma (UTC)', 'Created (UTC)')}:** {task['created_at']}",
+             f"**{label('Durum', 'Status')}:** {status.get(task['status'], task['status'])}",
+             f"**{label('Maliyet', 'Cost')}:** ${task['cost']:.6f}", "", "## " + label("Görev girdisi", "Task input"), "", task["prompt"], ""]
     if task.get("synthesis") and not single:
-        lines += ["## Baş uzman sentezi", "", task["synthesis"], ""]
+        lines += ["## " + label("Baş uzman sentezi", "Lead expert synthesis"), "", task["synthesis"], ""]
     for run in runs:
         if run["kind"] == "judge" and task.get("synthesis") and not single:
             continue
         name = agents.get(run["agent_id"], {}).get("name", run["agent_id"])
-        lines += [f"## {name} - {'Baş uzman' if run['kind'] == 'judge' else 'Ajan çıktısı'}", "",
-                  f"Durum: {status.get(run['status'], run['status'])}",
-                  f"Token: {run['input_tokens']} giriş / {run['output_tokens']} çıkış", f"Bitiş bilgisi: {run.get('finish_reason') or 'kaydedilmemiş'}", "",
-                  run.get("output") or run.get("error") or "Henüz çıktı yok.", ""]
+        kind = label('Baş uzman', 'Lead expert') if run['kind'] == 'judge' else label('Ajan çıktısı', 'Agent output')
+        lines += [f"## {name} - {kind}", "", f"{label('Durum', 'Status')}: {status.get(run['status'], run['status'])}",
+                  f"Token: {run['input_tokens']} {label('giriş', 'input')} / {run['output_tokens']} {label('çıkış', 'output')}",
+                  f"{label('Bitiş bilgisi', 'Finish reason')}: {run.get('finish_reason') or label('kaydedilmemiş', 'not recorded')}", "",
+                  run.get('output') or translate(run.get('error'), lang) or label('Henüz çıktı yok.', 'No output yet.'), ""]
     if task.get('sources'):
-        lines += ['## Kaynak envanteri', '', 'Kaynak aralığının varlığı iddianın doğruluğunu kanıtlamaz.', '']
+        lines += ['## ' + label('Kaynak envanteri', 'Source inventory'), '',
+                  label('Kaynak aralığının varlığı iddianın doğruluğunu kanıtlamaz.', 'The presence of a source range does not prove a claim is correct.'), '']
         for source in task['sources']:
             if source['kind'] == 'file':
-                lines.append(f"- {source['name']} · L{source['first']}–L{source['last']} · {source['label']}")
+                lines.append(f"- {source['name']} · L{source['first']}–L{source['last']} · {translate(source['label'], lang)}")
             else:
-                lines.append(f"- {source['url']} · {source['label']}")
+                lines.append(f"- {source['url']} · {translate(source['label'], lang)}")
     return "\n".join(lines)
 
 
-def pdf_bytes(markdown):
+def pdf_bytes(markdown, lang="tr"):
     with FONT_LOCK:
         if "HarborSans" not in pdfmetrics.getRegisteredFontNames():
             folder = Path(reportlab.__file__).parent / "fonts"
@@ -85,14 +95,14 @@ def pdf_bytes(markdown):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=(210 * mm, 297 * mm), rightMargin=20 * mm,
                            leftMargin=20 * mm, topMargin=23 * mm, bottomMargin=21 * mm,
-                           title="ECY Agent Harbor - Görev raporu", author="ECY Agent Harbor")
+                           title="ECY Agent Harbor - " + ("Task report" if lang == "en" else "Görev raporu"), author="ECY Agent Harbor")
     def footer(canvas, document):
         canvas.saveState()
         canvas.setStrokeColor(colors.HexColor("#dfe8df"))
         canvas.line(20 * mm, 17 * mm, 190 * mm, 17 * mm)
         canvas.setFont("HarborSans", 8)
         canvas.setFillColor(colors.HexColor("#829283"))
-        canvas.drawString(20 * mm, 12 * mm, "AGENT HARBOR  /  Görev raporu")
+        canvas.drawString(20 * mm, 12 * mm, "ECY AGENT HARBOR  /  " + ("Task report" if lang == "en" else "Görev raporu"))
         canvas.drawRightString(190 * mm, 12 * mm, str(document.page))
         canvas.restoreState()
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
@@ -105,4 +115,4 @@ def export_report(task, runs, fmt, agents, single=False):
     markdown = markdown_report(task, runs, agents, single)
     if fmt == "md":
         return markdown.encode("utf-8"), "text/markdown; charset=utf-8"
-    return pdf_bytes(markdown), "application/pdf"
+    return pdf_bytes(markdown, task.get("language", "tr")), "application/pdf"

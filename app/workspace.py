@@ -29,7 +29,7 @@ def initialize(db):
     CREATE INDEX IF NOT EXISTS files_project ON files(project_id,created_at);
     ''')
     columns = {r[1] for r in db.execute('PRAGMA table_info(tasks)')}
-    for column in ('project_id TEXT', 'review_enabled INTEGER NOT NULL DEFAULT 0', 'notified INTEGER NOT NULL DEFAULT 0'):
+    for column in ('project_id TEXT', 'review_enabled INTEGER NOT NULL DEFAULT 0', "language TEXT NOT NULL DEFAULT 'tr'", 'notified INTEGER NOT NULL DEFAULT 0'):
         if column.split()[0] not in columns:
             db.execute('ALTER TABLE tasks ADD COLUMN ' + column)
     # A process may have stopped after a send; never automatically repeat an ambiguous delivery.
@@ -77,7 +77,9 @@ def attach(db, tid, options):
 def clean_config(config, server):
     if not isinstance(config, dict):
         raise ValueError('Görev ayarları geçersiz')
-    result = {k: config[k] for k in ('prompt', 'mode', 'agents', 'judge', 'fallback_agent', 'web_enabled', 'review_enabled', 'tool_requested', 'project_id', 'file_ids') if k in config}
+    result = {k: config[k] for k in ('prompt', 'mode', 'agents', 'judge', 'fallback_agent', 'web_enabled', 'review_enabled', 'tool_requested', 'project_id', 'file_ids', 'language') if k in config}
+    if result.get('language', 'tr') not in ('tr', 'en'):
+        raise ValueError('Dil tr veya en olmalı')
     prompt = result.get('prompt', '')
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > server.MAX_PROMPT_CHARS:
         raise ValueError('Şablon bağlamı 1–16.000 karakter olmalı')
