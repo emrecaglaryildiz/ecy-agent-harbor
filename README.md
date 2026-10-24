@@ -1,5 +1,7 @@
 # ECY Agent Harbor
 
+**Lisans:** [MIT](LICENSE)
+
 Kendi AI ajanlarını API adresleri ve anahtarlarıyla yönetebileceğin, tek ajan veya paralel uzman topluluğu çalıştırabileceğin kişisel web uygulaması. **Normal açılış gerçek sağlayıcı modudur.** Uygulama anahtarlarını istemez, kendi başına mevcut makinelerine bağlanmaz; bağlantıları sen ayarlardan eklersin.
 
 ## Özellikler
@@ -210,3 +212,7 @@ Metin yine boşsa görev `incomplete / empty_response` olur; tamamlandı sayılm
 Yedek ajan varsayılan olarak kapalıdır. Seçilirse başarısız adım ayrı bir kayıtla yedek ajana verilir; başarısız çağrı geçmişten gizlenmez. Kısmi yanıt veya araç turundan sonra otomatik bağlantı tekrarı yapılmaz. İptal edilen görevin uçuşta olan çağrısı sağlayıcı tarafında bir süre daha sürebilir. Sağlayıcı kullanım bilgisi dönmezse tutar **tahmini** olarak etiketlenir. Modelin kendi bağlam/çıktı kapasitesi devam eder; uygulama normal model yanıtlarına çıktı token sınırı eklemez.
 
 Yedekleme için uygulama kapalıyken `data/` klasörünün tamamını koru; `master.key`, SQLite veritabanı, yüklenen dosyalar ve tarayıcı çalışma alanı bu klasördedir. GitHub ve dağıtım ZIP'i bu kişisel verileri içermez. Güncelleme mevcut veritabanına eklemeli geçişler uygular; farklı bir sürüme dönmeden önce güncelleme öncesi yedeği geri yüklemek gerekir.
+
+## Lisans
+
+Bu proje [MIT Lisansı](LICENSE) ile lisanslanmıştır. Üçüncü taraf bileşenlerin lisans ve telif bildirimleri kendi dosyalarında korunur.
