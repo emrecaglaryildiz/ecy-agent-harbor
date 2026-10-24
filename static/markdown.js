@@ -1,6 +1,7 @@
 function renderMarkdown(source){
  if(!window.marked||!window.DOMPurify)return '<p>'+String(source??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))+'</p>';
- const html=marked.parse(String(source??''),{gfm:true,breaks:true});
+ const cited=String(source??'').replace(/\[dosya:([a-f0-9]{32}):L(\d+)-L(\d+)\]/g,(_,id,start,end)=>`[Kaynak L${start}–L${end}](/api/files/${id}?start=${start})`);
+ const html=marked.parse(cited,{gfm:true,breaks:true});
  const fragment=DOMPurify.sanitize(html,{
   RETURN_DOM_FRAGMENT:true,
   ALLOWED_TAGS:['p','br','hr','h1','h2','h3','h4','h5','h6','strong','em','del','s','ul','ol','li','blockquote','pre','code','a','img','table','thead','tbody','tr','th','td','input'],
