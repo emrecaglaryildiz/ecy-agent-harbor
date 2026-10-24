@@ -76,3 +76,26 @@ Yeni terminal durum `incomplete` (Yanıt eksik) sağlayıcı üretim sınırı, 
 Görev oluşturma gövdesi `web_enabled: true/false` destekler; varsayılan false. Gerçek MCP hazır değilse internet açık görev reddedilir. /api/state providers alanında endpoint bazında çalışan/çalışmayan/bilinmeyen özetini, browser alanında MCP durumunu döndürür. Tool-call döngüsü modelin kullanım toplamına dahildir.
 
 Harcama takibi kotasızdır: daily_limit=null, usage.cost bugünkü tutar, usage.total_cost tüm zamanların tutarıdır. budget alanı eski istemciler için kabul edilir ancak uygulanmaz. Yeni görevlerde rezerv ve bütçe alanları sıfırdır. Boş görünür metin completed olamaz; empty_response bitişi incomplete durumuna karşılık gelir. GET task run çıktısında can_resume_from_evidence özelliği bulunur, provider_state bulunmaz. continue endpoint'i metinsiz sonuçta varsa kayıtlı model/araç durumunu kullanır ve web_enabled=false olan bir finalleştirme işi açar; web çağrılarını tekrarlamaz.
+
+
+## Çalışma alanı ve otomasyon API'si
+
+Tüm uçlar mevcut oturum/RBAC kurallarını kullanır; POST için CSRF zorunludur. Projeler aynı kişisel çalışma alanındaki tüm rollere görünür; yazma/silme işlemleri kayıt sahibi veya yöneticidedir.
+
+- `GET /api/workspace`: projeler, dosya metadata'sı, şablonlar ve zamanlamalar; yöneticiye şifresiz bot tokenı içermeyen Telegram ayarı ve teslimat geçmişi.
+- `POST /api/projects`: `{id?, name, instruction}`. `/api/projects/delete`: `{id}`. Kullanılan projeler silinmez.
+- `POST /api/files`: `{name, data: base64, project_id?}`. Dosya başına varsayılan 32 MB; UTF-8 metin/log/JSON/CSV, PDF, PNG/JPEG/WebP. Ham içerik ve çıkarılmış metin uygulama verisidir.
+- `GET /api/files/:id?start=1&count=200`: en fazla 1.000 satırlık sayfa. `?image=1` yalnızca doğrulanan görsel türlerinde oturum korumalı görüntü.
+- `POST /api/files/delete`: `{id}`. Görev kanıtı, şablon veya zamanlama tarafından kullanılan dosyalar korunur.
+- `POST /api/tasks` ek alanları: `project_id`, `file_ids`, `review_enabled`, `fallback_agent`. Varsayılan mod `single`.
+- `GET /api/state?project_id=:id`: proje görevleri. `__general` genel alanı seçer; parametre yoksa son 100 görev.
+- `GET /api/tasks/:id`: ek `files`, `sources`, görünür canlı `runs[].output`, `attempt`, `cost_estimated`. `provider_state` ve `request_state` hiçbir zaman bu yanıta eklenmez.
+- `POST /api/tasks/:id/retry`: `{run_id}` seçili başarısız/eksik aşamayı yeni görevde çalıştırır. Orijinal görev sona ermiş olmalıdır.
+- `POST /api/tasks/:id/followup`: `{prompt}` önceki çıktılar, proje ve dosya referanslarıyla yeni görev.
+- `POST /api/templates`: `{name, config: task_body}`. `/api/templates/delete`: `{id}`.
+- `POST /api/schedules`: `{name, config: task_body, interval_minutes: 5..525600, next_run?: epoch_seconds}`.
+- `POST /api/schedules/toggle`: `{id, enabled}`; `/api/schedules/delete`: `{id}`.
+- `POST /api/telegram`: yönetici; `{token?, clear_token?, chat_id, origin?, enabled, include_summary}`. Boş token kayıtlı değeri korur. Token şifrelenir ve geri döndürülmez. Kaydetmek mesaj göndermez.
+- `POST /api/notifications/retry`: yönetici; `{id}`. Belirsiz teslimatı tekrar göndermek kopya mesaj oluşturabilir.
+
+Zamanlayıcı her beş saniyede kontrol eder; iş kaydı ve `next_run` aynı SQLite işlemi içinde ilerletilir. Telegram outbox durumu `pending → sending → sent/failed/unknown` olur. Başlangıçta `sending` kayıtları `unknown` yapılır; otomatik tekrar edilmez.

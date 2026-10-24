@@ -63,3 +63,14 @@ Yanıt bitişi: runs.finish_reason alanı sağlayıcının bitiş gerekçesini t
 web_enabled görev bazlı kalıcı bayraktır. Varsayılan kapalıdır. Açıkken her ajan için ayrı BrowserMCP oturumu oluşturulur. MCP stdio istemcisi tools/call üzerinden yalnızca browser_navigate çağırır; MCP sunucusunun diğer araçları modele ilan edilmez. Modelde iki dar function tool bulunur: web_search/web_open. PublicProxy doğrudan doğrulanmış genel IP'ye bağlanır ve HTTPS CONNECT tünelini geçirir. browser_guard.cjs yöntem ve WebSocket filtrelerini uygular. BrowserMCP kapanışı tarayıcı alt sürecini, yerel proxy'yi ve geçici profili temizler. Docker tarayıcı sandbox çalışması bu ortamda test edilmedi; güvenliği azaltan --no-sandbox kullanılmaz.
 
 Son sürümde günlük/görev harcama kotası kaldırılmıştır; usage toplamları sadece izlenir. Private runs.provider_state tur ve kaynak geçmişini tutar. tasks.resume_state, yeni rapor finalleştirme işine bu geçmişi taşır. Public API bunları temizler. Boş completed kayıtları başlangıçta incomplete olarak düzeltilir, mevcut maliyetler korunur.
+
+
+## Çalışma alanı genişletmeleri
+
+`workspace.py` eklemeli şema geçişlerini, sahiplik denetimlerini ve proje/şablon/zamanlama API'sini sağlar. `files.py` opaque dosya kimlikleriyle 0600 izinli ham dosyaları, metadata ve metin çıkarımını tutar. Görevler `task_files` ile kanıta bağlanır; görev silinmesi bağlantıyı cascade eder, kanıt dosyasını otomatik silmez.
+
+`streaming.py` SSE content/reasoning/tool-call parçalarını ayırır. Yalnızca görünür content `_on_delta` ile yaklaşık 300 ms'de SQLite'a yazılır. UI iki saniyelik mevcut polling ile görünür metni alır. Sağlayıcı akışı finish_reason olmadan biterse incomplete olur. 400 ile reddedilen akış isteği bir kez normal JSON sözleşmesiyle gönderilir. Geçici bağlantı/429/5xx hatasında hiçbir parça veya tool sonucu alınmamışsa bir tekrar yapılır; kısmi çalışma otomatik oynatılmaz.
+
+`pipeline.py` dosyaların tüm metin parçalarını işler; uzun tek satırlar da kaybolmadan bölünür. Ara adımlar ayrı run kayıtlarıdır. Kaynak atıfları özetleme boyunca istenir ve korunur; modelin anlamsal özet kalitesi otomatik garanti edilmez. Dosyasız eski akışlarda baş uzmana tam katılımcı yanıtı aktarılmaya devam edilir. Karşılıklı eleştiri ve baş uzman seçimi görev seçenekleridir; yedek ajan her geçişi ayrı run/log kaydıyla görünür kılar.
+
+`automation.py` aynı CONFIG_LOCK ve SQLite yazma işlemini kullanarak zamanlama/task kaydını atomik bağlar; açık görevler çakışmaz. Telegram tokenı vault ile şifrelenir. Gönderim sabit `api.telegram.org` uç noktasına, redirect olmadan yapılır; outbox belirsiz teslimatları tekrar etmez. Tek bir `notified` işareti görevin ilk terminal/onay durumunu bildirmek içindir. Her aralığın tam dakikasında çalışacağı veya harici Telegram'da exactly-once teslimat garantisi verilmez.
