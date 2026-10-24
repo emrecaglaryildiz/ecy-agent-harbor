@@ -31,9 +31,10 @@ Aşağıdaki görüntüler geliştirme sırasında test verileriyle alınmışt�
 
 Mac'te **Baslat.command** dosyasına çift tıkla. Gerekli Python bileşenleri eksikse proje içinde `.venv` oluşturur ve `requirements.txt` dosyasından kurar. Python 3.9 veya üzeri gerekir.
 
-Terminalden aynı klasörde:
+GitHub ZIP arşivinden çıkardıysan çalıştırma iznini bir kez ver. Terminalden aynı klasörde:
 
 ```sh
+chmod +x Baslat.command
 ./Baslat.command
 ```
 
