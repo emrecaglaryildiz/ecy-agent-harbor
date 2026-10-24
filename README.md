@@ -20,7 +20,7 @@ Kendi AI ajanlarını API adresleri ve anahtarlarıyla yönetebileceğin, tek aj
 
 ## Ekran görüntüleri
 
-Güncel sürümün ekranları, gerçek sağlayıcı anahtarı kullanılmadan ayrı test alanında örnek verilerle alınmıştır.
+Güncel sürümün ekranları, gerçek sağlayıcı anahtarı kullanılmadan ayrı test alanında örnek verilerle alınmıştır. Görseller 1440 piksel tarayıcı genişliğinde masaüstü görünümünden alınmıştır; uzun ve dar tam sayfa görüntüleri kullanılmaz.
 
 ### Görev stüdyosu: dosyalar, eleştiri turu ve yedek ajan
 
