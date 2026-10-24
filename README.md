@@ -1,6 +1,8 @@
 # ECY Agent Harbor
 
-**Lisans:** [MIT](LICENSE)
+**Lisans:** [ECY Atıf Lisansı 1.0](LICENSE) · README / Hakkında bölümünde görünür atıf zorunlu
+
+**Geliştiren:** Emre Çağlar YILDIZ
 
 Kendi AI ajanlarını API adresleri ve anahtarlarıyla yönetebileceğin, tek ajan veya paralel uzman topluluğu çalıştırabileceğin kişisel web uygulaması. **Normal açılış gerçek sağlayıcı modudur.** Uygulama anahtarlarını istemez, kendi başına mevcut makinelerine bağlanmaz; bağlantıları sen ayarlardan eklersin.
 
@@ -215,4 +217,12 @@ Yedekleme için uygulama kapalıyken `data/` klasörünün tamamını koru; `mas
 
 ## Lisans
 
-Bu proje [MIT Lisansı](LICENSE) ile lisanslanmıştır. Üçüncü taraf bileşenlerin lisans ve telif bildirimleri kendi dosyalarında korunur.
+Bu sürüm [ECY Agent Harbor Attribution License 1.0](LICENSE) ile sunulur. MIT'nin kullanım, değiştirme ve dağıtım izinlerini temel alan, **ek görünür atıf koşulu içeren özel bir lisanstır**; standart MIT Lisansı değildir.
+
+Projeyi veya değiştirilmiş bir sürümünü kullanırken, dağıtırken ya da hizmet olarak sunarken README dokümantasyonunda veya kullanıcıların erişebileceği Hakkında / Credits bölümünde aşağıdaki atfı makul biçimde görünür tutmalısın:
+
+> ECY Agent Harbor — Emre Çağlar YILDIZ
+
+Yalnızca kaynak kod yorumlarında veya LICENSE dosyasında adın bulunması bu ek koşulu karşılamaz. Projeyi daha büyük bir uygulamaya dahil edersen atıf o uygulamanın README veya Hakkında bölümünde yer alabilir. Telif ve lisans bildirimleri de korunmalıdır. Kaynak proje bağlantısı: [ECY Agent Harbor](https://github.com/emrecaglaryildiz/ecy-agent-harbor).
+
+Üçüncü taraf bileşenlerin kendi lisans ve telif bildirimleri korunur; bu ek koşul bu bileşenlerin lisanslarını değiştirmez. Önceki commitlerde standart MIT metni bulunur; bu lisans değişikliği burada yayımlanan sürüm için kaydedilmiştir.

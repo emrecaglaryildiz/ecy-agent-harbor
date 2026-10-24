@@ -1,6 +1,10 @@
-MIT License
+ECY Agent Harbor Attribution License 1.0
+SPDX-License-Identifier: LicenseRef-ECY-Attribution-1.0
 
 Copyright (c) 2026 Emre Çağlar YILDIZ
+
+This is a custom license based on the MIT License with an additional visible
+attribution condition. It is not the standard MIT License.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -9,8 +13,21 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. The above copyright notice and this permission notice, including both
+   conditions in this license, shall be included in all copies or substantial
+   portions of the Software.
+
+2. Any copy or modified version of the Software that you use, distribute,
+   publish, or make available as a hosted service must retain the following
+   attribution, reasonably prominently, in its README documentation or in an
+   About/Credits section accessible to its users:
+
+   ECY Agent Harbor — Emre Çağlar YILDIZ
+
+   When the Software is incorporated into a larger project, the attribution
+   may appear in that project's README or About/Credits section. A notice only
+   in source comments or in a license file does not satisfy this additional
+   visible attribution condition.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
