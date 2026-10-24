@@ -9,6 +9,7 @@ import sqlite3
 import threading
 import time
 import uuid
+import sys
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,6 +17,7 @@ from urllib.parse import urlparse, parse_qs
 from urllib.error import HTTPError, URLError
 
 from .adapters import adapter_for
+from . import workspace, files, pipeline, automation
 from .vault import encrypt, decrypt
 from .browser_mcp import BrowserMCP, status as browser_status, install as install_browser
 
@@ -110,6 +112,13 @@ def initialize():
             db.execute("ALTER TABLE tasks ADD COLUMN web_enabled INTEGER NOT NULL DEFAULT 0")
         if "resume_state" not in {row[1] for row in db.execute("PRAGMA table_info(tasks)")}:
             db.execute("ALTER TABLE tasks ADD COLUMN resume_state TEXT NOT NULL DEFAULT ''")
+        for column in ("request_state TEXT NOT NULL DEFAULT ''", "attempt INTEGER NOT NULL DEFAULT 1", "cost_estimated INTEGER NOT NULL DEFAULT 0"):
+            if column.split()[0] not in {r[1] for r in db.execute("PRAGMA table_info(runs)")}:
+                db.execute("ALTER TABLE runs ADD COLUMN " + column)
+        for column in ("fallback_agent TEXT", "retry_state TEXT NOT NULL DEFAULT ''", "cost_estimated INTEGER NOT NULL DEFAULT 0"):
+            if column.split()[0] not in {r[1] for r in db.execute("PRAGMA table_info(tasks)")}:
+                db.execute("ALTER TABLE tasks ADD COLUMN " + column)
+        workspace.initialize(db)
         # Legacy calls used a fixed 1,500-token cap and did not record finish_reason.
         db.execute("UPDATE runs SET status='incomplete',finish_reason='legacy_length_suspected',output_limit=1500 WHERE status='completed' AND finish_reason IS NULL AND output_tokens>=1500")
         db.execute("UPDATE tasks SET status='incomplete' WHERE status='completed' AND EXISTS(SELECT 1 FROM runs WHERE runs.task_id=tasks.id AND runs.status='incomplete')")
@@ -205,8 +214,8 @@ def save_agent(user, body):
         old = BY_ID.get(aid, {})
         if old.get("deleted"):
             raise ValueError("Bu ajan silinmiş; yeni bir ajan ekle")
-        for task in db.execute("SELECT agents,judge FROM tasks WHERE status IN ('queued','running')"):
-            if aid in json.loads(task[0]) or aid == task[1]:
+        for task in db.execute("SELECT agents,judge,fallback_agent FROM tasks WHERE status IN ('queued','running')"):
+            if aid in json.loads(task[0]) or aid == task[1] or aid == task[2]:
                 raise ValueError("Ajanın açık görevi var; görev bitince ayarları değiştirebilirsin")
         agent = dict(old, id=aid)
         for field, default, limit in [("name", "", 80), ("role", "Uzman", 120), ("model", "", 200),
@@ -260,8 +269,8 @@ def change_agent_state(user, aid, enabled=None, delete=False):
         old = BY_ID.get(aid)
         if not old or old.get("deleted"):
             raise ValueError("Ajan bulunamadı")
-        for task in db.execute("SELECT agents,judge FROM tasks WHERE status IN ('queued','running')"):
-            if aid in json.loads(task[0]) or aid == task[1]:
+        for task in db.execute("SELECT agents,judge,fallback_agent FROM tasks WHERE status IN ('queued','running')"):
+            if aid in json.loads(task[0]) or aid == task[1] or aid == task[2]:
                 raise ValueError("Ajanın açık görevi var; bitmesini bekle veya önce iptal et")
         agent = dict(old)
         if delete:
@@ -348,12 +357,14 @@ def task_dict(row):
     task["agents"] = json.loads(task["agents"])
     task.pop("continuation_context", None)
     task.pop("resume_state", None)
+    task.pop("retry_state", None)
     return task
 
 
 def public_run(row):
     run = dict(row)
     state = run.pop("provider_state", "")
+    run.pop("request_state", None)
     run["can_resume_from_evidence"] = False
     if state:
         try:
@@ -383,18 +394,18 @@ def usage_today(db):
     return {"cost": row[0] + deleted, "reserved": 0, "total_cost": total}
 
 
-def create_task(user, body, continuation_context="", resume_state=""):
+def create_task(user, body, continuation_context="", resume_state="", retry_state="", db=None):
     with CONFIG_LOCK:
-        return _create_task(user, body, continuation_context, resume_state)
+        return _create_task(user, body, continuation_context, resume_state, retry_state, db)
 
 
-def _create_task(user, body, continuation_context="", resume_state=""):
+def _create_task(user, body, continuation_context="", resume_state="", retry_state="", db=None):
     if user["role"] not in ("admin", "operator"):
         raise PermissionError("Bu rol görev oluşturamaz")
     prompt = body.get("prompt", "")
     if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT_CHARS:
         raise ValueError("Bağlam 1–16.000 karakter olmalı")
-    mode = body.get("mode", "council")
+    mode = body.get("mode", "single")
     ids = body.get("agents", [])
     if mode not in ("single", "council") or not isinstance(ids, list) or not ids or len(ids) > 4 or any(not isinstance(x, str) or x not in BY_ID for x in ids) or len(set(ids)) != len(ids):
         raise ValueError("Geçerli ajanlar ve çalışma modu seçilmeli")
@@ -407,21 +418,30 @@ def _create_task(user, body, continuation_context="", resume_state=""):
         raise ValueError("Seçilen sağlayıcı sunucuda yapılandırılmamış")
     if any(not BY_ID[x].get("enabled", True) for x in ids + ([judge] if judge else [])):
         raise ValueError("Devre dışı bir ajan seçilemez")
+    fallback = body.get("fallback_agent") or None
+    if fallback and (fallback not in BY_ID or not BY_ID[fallback].get("enabled", True) or (MODE != "mock" and not BY_ID[fallback]["endpoint"])):
+        raise ValueError("Yedek ajan etkin ve yapılandırılmış olmalı")
     web_enabled = body.get("web_enabled") is True
     if web_enabled:
         if not browser_status(DB_PATH)["installed"]:
             raise ValueError("İnterneti açmadan önce ayarlardan Playwright MCP kurulumunu tamamla")
-        if any(BY_ID[x]["provider"] != "openai-compatible" for x in ids + ([judge] if judge else [])):
+        if any(BY_ID[x]["provider"] != "openai-compatible" for x in ids + ([judge] if judge else []) + ([fallback] if fallback else [])):
             raise ValueError("İnternet modu OpenAI uyumlu araç çağrısı destekleyen ajanlar içindir; Hermes bridge'e bu görevde internet verilmedi")
     budget = reserve = 0.0
     tid = uuid.uuid4().hex
-    with connect() as db:
-        db.execute("BEGIN IMMEDIATE")
+    from contextlib import nullcontext
+    existing = db is not None
+    with (nullcontext(db) if existing else connect()) as db:
+        if not existing:
+            db.execute("BEGIN IMMEDIATE")
+        options = workspace.task_options(db, user, body, sys.modules[__name__])
         count = db.execute("SELECT count(*) FROM tasks WHERE status IN ('queued','running','awaiting_approval')").fetchone()[0]
         if count >= MAX_QUEUE:
             raise ValueError("Görev kuyruğu dolu")
         db.execute("INSERT INTO tasks(id,title,prompt,mode,agents,judge,status,owner_id,created_at,updated_at,budget,reserved,tool_requested,continuation_context,web_enabled,resume_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (tid, prompt.strip()[:70], prompt.strip(), mode, json.dumps(ids), judge, "queued", user["id"], now(), now(), budget, reserve, int(bool(body.get("tool_requested", False))), continuation_context, int(web_enabled), resume_state))
+        db.execute("UPDATE tasks SET fallback_agent=?,retry_state=? WHERE id=?", (fallback, retry_state, tid))
+        workspace.attach(db, tid, options)
         log(db, tid, "queued", f"Görev kuyruğa alındı · {user['name']}")
     return tid
 
@@ -475,12 +495,19 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
         if task[0] != "running":
             return None
         db.execute("INSERT INTO runs(id,task_id,agent_id,kind,status,created_at) VALUES(?,?,?,?,?,?)", (rid, tid, aid, kind, "running", now()))
+        db.execute("UPDATE runs SET request_state=? WHERE id=?", (json.dumps({"prompt": prompt, "context": context, "continuation": continuation}, ensure_ascii=False), rid))
         log(db, tid, "agent_started", f"{BY_ID[aid]['name']} başladı · {kind}")
     reservation = call_reserve(BY_ID[aid], prompt, len(json.loads(task[1])) if kind == "judge" else 0)
     web = None
     provider_started = False
     try:
         agent = dict(BY_ID[aid])
+        with connect() as context_db:
+            project = context_db.execute("SELECT p.instruction FROM projects p JOIN tasks t ON t.project_id=p.id WHERE t.id=?", (tid,)).fetchone()
+            if project:
+                agent['instruction'] += '\nProje talimatı:\n' + project[0]
+            if kind == 'participant':
+                agent['_images'] = [files.image_part(sys.modules[__name__], row) for row in context_db.execute("SELECT f.* FROM files f JOIN task_files t ON t.file_id=f.id WHERE t.task_id=? AND f.kind='image'", (tid,))]
         agent["_continuation"] = continuation
         if resume_state:
             saved = json.loads(resume_state)
@@ -496,7 +523,7 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
         agent["_on_progress"] = save_progress
         if MODE != "mock":
             agent["api_key"] = agent_key(agent)
-        if task["web_enabled"]:
+        if task["web_enabled"] and kind == "participant":
             def web_log(event, message):
                 with connect() as web_db:
                     log(web_db, tid, event, message)
@@ -507,8 +534,38 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
                     row = task_db.execute("SELECT status FROM tasks WHERE id=?", (tid,)).fetchone()
                     return not row or row[0] == "cancelled"
             agent["_cancelled"] = cancelled
+        def cancelled():
+            with connect() as task_db:
+                row = task_db.execute("SELECT status FROM tasks WHERE id=?", (tid,)).fetchone()
+                return not row or row[0] == "cancelled"
+        agent["_cancelled"] = cancelled
+        partial, last_flush = [], [0.0]
+        def save_delta(delta):
+            partial.append(delta)
+            if time.monotonic() - last_flush[0] >= 0.3:
+                with connect() as delta_db:
+                    delta_db.execute("UPDATE runs SET output=? WHERE id=?", ("".join(partial), rid))
+                last_flush[0] = time.monotonic()
+        agent["_on_delta"] = save_delta
         provider_started = True
-        result = adapter_for(agent).complete(agent, prompt, context)
+        for attempt in range(1, 3):
+            if cancelled():
+                raise RuntimeError("Görev iptal edildi")
+            try:
+                result = adapter_for(agent).complete(agent, prompt, context)
+                break
+            except (HTTPError, URLError, TimeoutError, OSError) as exc:
+                with connect() as check_db:
+                    saved = check_db.execute("SELECT provider_state FROM runs WHERE id=?", (rid,)).fetchone()[0]
+                # No replay after visible output, a tool round or a completed response.
+                transient = not isinstance(exc, HTTPError) or exc.code in (408, 429, 500, 502, 503, 504)
+                if attempt == 2 or partial or saved or not transient or cancelled():
+                    raise
+                with connect() as retry_db:
+                    retry_db.execute("UPDATE runs SET attempt=2 WHERE id=?", (rid,))
+                    log(retry_db, tid, "provider_retry", "Geçici bağlantı hatası; çıktı alınmadan bir kez yeniden deneniyor")
+                if STOP.wait(1):
+                    raise RuntimeError("Sunucu durduruluyor")
         finish_reason = result.finish_reason
         if not result.text.strip() and finish_reason in ("stop", "end_turn", "eos", "stop_sequence", "unknown", "completed"):
             finish_reason = "empty_response"
@@ -517,14 +574,23 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
         with connect() as db:
             error = "Sağlayıcı kullanıcıya gösterilecek rapor metnini döndürmedi. Raporu yeniden üretebilirsin." if finish_reason == "empty_response" else None
             db.execute("UPDATE runs SET status=?,output=?,input_tokens=?,output_tokens=?,cost=?,finish_reason=?,error=? WHERE id=?", (run_status, result.text, result.input_tokens, result.output_tokens, cost, finish_reason, error, rid))
+            estimated = int(bool(getattr(result, 'usage_estimated', False)))
+            db.execute('UPDATE runs SET cost_estimated=? WHERE id=?', (estimated, rid))
+            db.execute('UPDATE tasks SET cost_estimated=max(cost_estimated,?) WHERE id=?', (estimated, tid))
             # Replace reservation with recorded cost while preserving outstanding headroom.
             db.execute("UPDATE tasks SET cost=cost+?,reserved=max(0,reserved-?),updated_at=? WHERE id=?", (cost, reservation, now(), tid))
             log(db, tid, "agent_" + run_status, f"{BY_ID[aid]['name']} · " + ("Yanıt tamamlanmadı" if run_status == "incomplete" else "Tamamlandı"))
         return result.text
     except Exception:
+        if "partial" in locals() and partial:
+            with connect() as partial_db:
+                partial_db.execute("UPDATE runs SET output=? WHERE id=?", ("".join(partial), rid))
         # Provider exception bodies may contain prompts, endpoints or credentials: never expose them.
         with connect() as db:
             possible_cost = 0 if MODE == "mock" or not provider_started else reservation
+            if possible_cost:
+                db.execute('UPDATE runs SET cost_estimated=1 WHERE id=?', (rid,))
+                db.execute('UPDATE tasks SET cost_estimated=1 WHERE id=?', (tid,))
             db.execute("UPDATE runs SET status='failed',cost=?,error=? WHERE id=?", (possible_cost, "Sağlayıcı yanıtı alınamadı; sunucu yapılandırmasını kontrol edin", rid))
             db.execute("UPDATE tasks SET cost=cost+?,reserved=max(0,reserved-?),updated_at=? WHERE id=?", (possible_cost, reservation, now(), tid))
             log(db, tid, "agent_failed", f"{BY_ID[aid]['name']} sağlayıcı çağrısı başarısız")
@@ -542,8 +608,9 @@ def process_task(tid):
         task = task_dict(row)
         continuation_context = row["continuation_context"]
         resume_state = row["resume_state"]
+        retry_state = json.loads(row["retry_state"] or "{}")
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        futures = {aid: pool.submit(run_agent, tid, aid, task["prompt"], context=continuation_context, continuation=bool(continuation_context), resume_state=resume_state) for aid in task["agents"]}
+        futures = {aid: pool.submit(pipeline.participant, sys.modules[__name__], task, aid, continuation_context, resume_state, retry_state) for aid in task["agents"]}
         results = {aid: future.result() for aid, future in futures.items()}
     with connect() as db:
         row = db.execute("SELECT status FROM tasks WHERE id=?", (tid,)).fetchone()
@@ -556,9 +623,18 @@ def process_task(tid):
     with connect() as db:
         incomplete = bool(db.execute("SELECT 1 FROM runs WHERE task_id=? AND status='incomplete'", (tid,)).fetchone())
     synthesis = None
+    reviews = {}
+    if task.get("review_enabled") and len(task["agents"]) > 1 and not failed and not incomplete:
+        reviews = pipeline.review(sys.modules[__name__], task, results)
+        failed = reviews is None
+        with connect() as db:
+            incomplete = bool(db.execute("SELECT 1 FROM runs WHERE task_id=? AND status='incomplete'", (tid,)).fetchone())
     if task["judge"] and not failed and not incomplete:
         context = "\n\n".join(BY_ID[k]["name"] + ":\n" + v for k, v in results.items())
-        synthesis = run_agent(tid, task["judge"], task["prompt"], "judge", context)
+        if reviews:
+            context += "\n\nKARŞILIKLI ELEŞTİRİLER:\n" + "\n\n".join(BY_ID[k]["name"] + ":\n" + v for k, v in reviews.items())
+        context = pipeline.reduce_context(sys.modules[__name__], task, task["judge"], context)
+        synthesis = None if context is None else pipeline.execute(sys.modules[__name__], task, task["judge"], task["prompt"] + "\nUzlaşılan noktalar, tartışmalı bulgular, kaynaklar, eksik veri ve önerilen adımlar başlıklarıyla sentezle. Katılımcıların iddialarını otomatik olarak doğrulanmış sayma.", "judge", context)
         failed = synthesis is None
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -677,6 +753,8 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/"):
                 user, session = self.user()
                 with connect() as db:
+                    if workspace.handle_get(self, user, path, db, sys.modules[__name__]):
+                        return
                     if path == "/api/browser/status":
                         return self.respond(200, browser_status(DB_PATH))
                     if path == "/api/agents":
@@ -688,7 +766,7 @@ class Handler(BaseHTTPRequestHandler):
                             "providers": provider_summary(db),
                             "browser": browser_status(DB_PATH),
                             "agents": [public_agent(a) for a in AGENTS if not a.get("deleted")], "daily_limit": DAILY_LIMIT,
-                            "tasks": [task_dict(r) for r in db.execute("SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100")],
+                            "tasks": [task_dict(r) for r in workspace.task_list(db, self.path)],
                             "approvals": [dict(r) for r in db.execute("SELECT a.*,t.title FROM approvals a JOIN tasks t ON a.task_id=t.id ORDER BY a.created_at DESC LIMIT 100")],
                             "usage": usage_today(db)})
                     if path.startswith("/api/tasks/") and path.endswith("/export"):
@@ -705,7 +783,9 @@ class Handler(BaseHTTPRequestHandler):
                             runs = [r for r in runs if r["id"] == run_id]
                             if not runs:
                                 return self.respond(404, {"error": "Ajan çıktısı bulunamadı"})
-                        content, content_type = export_report(task_dict(row), runs, fmt, BY_ID, single=bool(run_id))
+                        report_task = task_dict(row)
+                        report_task['sources'] = files.sources(db, tid)
+                        content, content_type = export_report(report_task, runs, fmt, BY_ID, single=bool(run_id))
                         self.send_response(200)
                         self.headers_common(content_type)
                         self.send_header("Cache-Control", "no-store")
@@ -720,10 +800,12 @@ class Handler(BaseHTTPRequestHandler):
                         if not row:
                             return self.respond(404, {"error": "Görev bulunamadı"})
                         return self.respond(200, {"task": task_dict(row),
+                            "sources": files.sources(db, tid),
+                            "files": [files.metadata(r) for r in db.execute("SELECT f.* FROM files f JOIN task_files t ON t.file_id=f.id WHERE t.task_id=?", (tid,))],
                             "runs": [public_run(r) for r in db.execute("SELECT * FROM runs WHERE task_id=? ORDER BY created_at", (tid,))],
                             "logs": [dict(r) for r in db.execute("SELECT * FROM logs WHERE task_id=? ORDER BY id", (tid,))]})
                 return self.respond(404, {"error": "Endpoint bulunamadı"})
-            static = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/settings.js": ("settings.js", "text/javascript; charset=utf-8"), "/history.js": ("history.js", "text/javascript; charset=utf-8"), "/theme.js": ("theme.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
+            static = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/settings.js": ("settings.js", "text/javascript; charset=utf-8"), "/history.js": ("history.js", "text/javascript; charset=utf-8"), "/theme.js": ("theme.js", "text/javascript; charset=utf-8"), "/workspace.js": ("workspace.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
             if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
@@ -753,7 +835,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 raise ValueError("JSON içerik gerekli")
             length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > MAX_REQUEST_BYTES:
+            if length <= 0 or length > (files.MAX_FILE_BYTES * 4 // 3 + 8192 if path == '/api/files' else MAX_REQUEST_BYTES):
                 raise ValueError("İstek boyutu geçersiz")
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
@@ -793,6 +875,8 @@ class Handler(BaseHTTPRequestHandler):
                 secure = "; Secure" if os.getenv("COOKIE_SECURE") == "1" else ""
                 return self.respond(200, {"ok": True}, "harbor=" + sid + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800" + secure)
             user, session = self.user()
+            if workspace.handle_post(self, user, path, body, sys.modules[__name__]):
+                return
             if path == "/api/browser/install":
                 if user["role"] != "admin":
                     raise PermissionError("MCP kurulumunu yalnızca yönetici başlatabilir")
@@ -825,6 +909,29 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, {"ok": True}, "harbor=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
             if path == "/api/tasks":
                 return self.respond(201, {"id": create_task(user, body)})
+            if path.startswith('/api/tasks/') and path.endswith('/followup'):
+                tid = path.split('/')[-2]
+                with connect() as db:
+                    row = db.execute('SELECT * FROM tasks WHERE id=?', (tid,)).fetchone()
+                    if not row or row['status'] not in ('completed','incomplete','failed','cancelled'):
+                        raise ValueError('Önceki görev bitmiş olmalı')
+                    cfg = task_dict(row)
+                    cfg['prompt'] = body.get('prompt', '')
+                    cfg['file_ids'] = [r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?', (tid,))]
+                    prior = '\n\n'.join(r[0] or '' for r in db.execute('SELECT output FROM runs WHERE task_id=?', (tid,)))
+                return self.respond(201, {'id': create_task(user, cfg, continuation_context=prior)})
+            if path.startswith("/api/tasks/") and path.endswith("/retry"):
+                tid = path.split("/")[-2]
+                with connect() as db:
+                    task = db.execute("SELECT * FROM tasks WHERE id=?", (tid,)).fetchone()
+                    run = db.execute("SELECT * FROM runs WHERE task_id=? AND id=?", (tid, body.get("run_id"))).fetchone()
+                    if not task or not run or task["status"] not in ("failed", "incomplete", "cancelled") or run["status"] not in ("failed", "incomplete"):
+                        raise ValueError("Yalnızca bitmiş görevin başarısız/eksik adımı yeniden denenebilir")
+                    request_state = run["request_state"]
+                    file_ids = [r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?', (tid,))]
+                    next_body = {"prompt": task["prompt"], "agents": [run["agent_id"]], "mode": "single", "web_enabled": bool(task["web_enabled"]), "project_id": task["project_id"], "file_ids": file_ids}
+                next_id = create_task(user, next_body, retry_state=request_state)
+                return self.respond(201, {"id": next_id})
             if path.startswith("/api/tasks/") and path.endswith("/continue"):
                 tid = path.split("/")[-2]
                 with connect() as db:
@@ -834,7 +941,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("Devam ettirilecek eksik yanıt bulunamadı")
                     previous = (task["continuation_context"] + "\n\n" if task["continuation_context"] else "") + (run["output"] or "")
                     saved_state = run["provider_state"] if not (run["output"] or "").strip() else ""
-                    next_task = {"prompt": task["prompt"], "mode": "single", "agents": [run["agent_id"]], "web_enabled": bool(task["web_enabled"]) and not bool(saved_state)}
+                    next_task = {"prompt": task["prompt"], "mode": "single", "agents": [run["agent_id"]], "web_enabled": bool(task["web_enabled"]) and not bool(saved_state), "project_id": task["project_id"], "file_ids": [r[0] for r in db.execute("SELECT file_id FROM task_files WHERE task_id=?", (tid,))]}
                 return self.respond(201, {"id": create_task(user, next_task, continuation_context=previous if not saved_state else "", resume_state=saved_state)})
             if path.startswith("/api/approvals/"):
                 decide(user, path.split("/")[-1], body.get("decision"))
@@ -878,6 +985,7 @@ def main():
         raise SystemExit(f"{port} portu kullanılıyor. ECY Agent Harbor zaten açıksa http://localhost:{port} adresini aç.")
     os.umask(0o077)
     initialize()
+    threading.Thread(target=automation.loop, args=(sys.modules[__name__],), daemon=True).start()
     for _ in range(WORKERS):
         threading.Thread(target=worker, daemon=True).start()
     print(f"ECY Agent Harbor ({MODE}): http://{host}:{port}", flush=True)

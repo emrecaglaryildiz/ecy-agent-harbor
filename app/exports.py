@@ -34,6 +34,13 @@ def markdown_report(task, runs, agents, single=False):
                   f"Durum: {status.get(run['status'], run['status'])}",
                   f"Token: {run['input_tokens']} giriş / {run['output_tokens']} çıkış", f"Bitiş bilgisi: {run.get('finish_reason') or 'kaydedilmemiş'}", "",
                   run.get("output") or run.get("error") or "Henüz çıktı yok.", ""]
+    if task.get('sources'):
+        lines += ['## Kaynak envanteri', '', 'Kaynak aralığının varlığı iddianın doğruluğunu kanıtlamaz.', '']
+        for source in task['sources']:
+            if source['kind'] == 'file':
+                lines.append(f"- {source['name']} · L{source['first']}–L{source['last']} · {source['label']}")
+            else:
+                lines.append(f"- {source['url']} · {source['label']}")
     return "\n".join(lines)
 
 

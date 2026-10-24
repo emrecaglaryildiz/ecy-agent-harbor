@@ -3,7 +3,9 @@ import json
 import os
 import time
 import urllib.request
+from urllib.error import HTTPError
 from dataclasses import dataclass
+from .streaming import read_completion
 
 
 @dataclass
@@ -12,6 +14,7 @@ class Result:
     input_tokens: int
     output_tokens: int
     finish_reason: str = "stop"
+    usage_estimated: bool = False
 
 
 def response_text(content):
@@ -82,6 +85,12 @@ class OpenAICompatibleAdapter:
         if agent.get("_resume_messages"):
             payload["messages"] = json.loads(json.dumps(agent["_resume_messages"]))
             payload["messages"].append({"role": "user", "content": "Kayıtlı kaynakları kullanarak kullanıcıya gösterilecek nihai raporu content alanında üret. Yeni web araması veya araç çağrısı yapma. Doğrulayamadığın bilgileri açıkça belirt; kaynak URL'lerini ekle."})
+        if agent.get("_on_delta"):
+            payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
+        if agent.get('_images'):
+            last_user = next(message for message in reversed(payload['messages']) if message['role'] == 'user')
+            last_user['content'] = [{'type': 'text', 'text': last_user['content']}] + agent['_images']
         if agent.get("_probe_limit"):
             payload["max_tokens"] = agent["_probe_limit"]
         web = agent.get("_web")
@@ -96,6 +105,7 @@ class OpenAICompatibleAdapter:
                 return None
         opener = urllib.request.build_opener(NoRedirect)
         total_input = total_output = steps = 0
+        usage_estimated = False
         step_limit = int(os.getenv("WEB_MAX_TOOL_STEPS", "12"))
         force_final = bool(agent.get("_force_final"))
         final_instruction_sent = force_final
@@ -125,9 +135,20 @@ class OpenAICompatibleAdapter:
                 payload.pop("tool_choice", None)
             request = urllib.request.Request(agent["endpoint"].rstrip("/") + "/chat/completions",
                 data=json.dumps(payload).encode(), headers=headers, method="POST")
-            with opener.open(request, timeout=agent.get("timeout", 90)) as response:
-                data = json.loads(response.read())
-            usage = data.get("usage", {})
+            try:
+                with opener.open(request, timeout=agent.get("timeout", 90)) as response:
+                    data = read_completion(response, agent)
+            except HTTPError as exc:
+                if exc.code != 400 or not payload.get('stream'):
+                    raise
+                # Some compatible endpoints reject streaming; a 400 has no accepted completion.
+                payload.pop('stream', None)
+                payload.pop('stream_options', None)
+                request = urllib.request.Request(agent['endpoint'].rstrip('/') + '/chat/completions', data=json.dumps(payload).encode(), headers=headers, method='POST')
+                with opener.open(request, timeout=agent.get('timeout', 90)) as response:
+                    data = read_completion(response, agent)
+            usage = data.get("usage") or {}
+            usage_estimated = usage_estimated or not all(type(usage.get(k)) is int for k in ("prompt_tokens", "completion_tokens"))
             choice = data["choices"][0]
             message = choice["message"]
             content = response_text(message.get("content"))
@@ -157,7 +178,9 @@ class OpenAICompatibleAdapter:
                     finish = "empty_response" if finish in ("stop", "unknown", "completed", "end_turn") else finish
                 payload["messages"].append(turn)
                 checkpoint("final_response", choice)
-                return checked_result(content, total_input, total_output, finish)
+                result = checked_result(content, total_input, total_output, finish)
+                result.usage_estimated = usage_estimated
+                return result
             payload["messages"].append(turn)
             has_tool_history = True
             for call in calls:
