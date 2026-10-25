@@ -46,4 +46,10 @@ Hiçbir uygulama “hacklenmez” diye garanti edilemez. Prompt injection, hatal
 
 GitHub Actions `container-smoke` job runs `python tests/container_smoke.py` in disposable Linux containers. It builds the image, enrolls an ephemeral administrator with MFA, restarts in public mode, checks backend port isolation, trusts only the generated fixture CA for verified local HTTPS, rejects setup/CSRF/recovery replay and extracts a sample PDF. No real API keys or existing data are used. This validates local TLS, not real-domain DNS/ACME renewal, production firewall rules or external load/DDoS behavior. Check the latest [Actions result](https://github.com/emrecaglaryildiz/ecy-agent-harbor/actions) before relying on it.
 
+### 25 Ekim 2026 doğrulama durumu / Validation status, 25 October 2026
+
+macOS'ta 170 birim/entegrasyon testi ve dil/saat kontrolleri geçti. İlk Linux CI çalışmasında PDF metin çıkarımı başarısız oldu; bu nedenle yayın kabulü henüz tamamlanmadı. Container testi bu hatadan önce yerel sertifika doğrulamalı HTTPS, MFA, backend port izolasyonu, setup reddi ve CSRF kontrollerini geçti. Kaynak sınırlarını değiştirmeyen, yalnızca sentetik PDF kullanan `tests/pdf_runtime_probe.py` hata nedenini CI'de göstermek için eklendi. Sonraki container kontrolü artık birim testlerinin başarılı olmasını bekler.
+
+On macOS, 170 unit/integration tests and language/time checks passed. The first Linux CI run failed at PDF text extraction; release acceptance remains incomplete. Before that failure, the container fixture passed verified local HTTPS, MFA, backend port isolation, setup denial and CSRF checks. `tests/pdf_runtime_probe.py` diagnoses this with a synthetic PDF while preserving the parser's resource limits. The container job now depends on a successful verification job.
+
 Bu test yalnızca kendi oluşturduğu geçici container, network, volume ve image'ları temizler. Mevcut Harbor verilerine dokunmaz. Çalışan Docker servisi gerekir; yerel geliştirme makinesinde servis bulunmadığından çalışma doğrulaması CI sonucuyla takip edilir. Gerçek alan adı, sertifika yenileme ve dış ağ/yük kabulü ayrıca yapılmalıdır.
