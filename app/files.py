@@ -56,7 +56,8 @@ def upload(server, user, body):
     project_id = body.get('project_id') or None
     fid = uuid.uuid4().hex
     with server.connect() as db:
-        server.workspace.check_project(db, user, project_id)
+        db.execute('BEGIN IMMEDIATE')
+        server.workspace.check_project(db, user, project_id,write=True)
         db.execute('INSERT INTO files(id,name,kind,mime,size,sha256,text,owner_id,project_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
                    (fid, name, kind, mime, len(raw), hashlib.sha256(raw).hexdigest(), text, user['id'], project_id, server.now()))
     target = folder(server) / fid

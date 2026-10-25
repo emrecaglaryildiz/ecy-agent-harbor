@@ -73,6 +73,7 @@ def execute(server,ident):
         db.execute('BEGIN IMMEDIATE')
         call=db.execute('SELECT * FROM mcp_calls WHERE id=?',(ident,)).fetchone()
         if not call or call['status']!='approved':raise ValueError('MCP çağrısı onaylı değil')
+        if call['task_id'] and not server.access.owner_can_run(server,db,call['task_id']):raise PermissionError(server.access.DENIED)
         row=db.execute('SELECT * FROM mcp_servers WHERE id=? AND enabled=1',(call['server_id'],)).fetchone()
         tool=next((t for t in json.loads(row['tools']) if t['name']==call['tool']),None) if row else None
         if not row or row['revision']!=call['revision'] or not tool or tool['policy']=='blocked':raise ValueError('MCP izni değişti; yeni çağrı oluştur')
@@ -85,6 +86,7 @@ def execute(server,ident):
             raise ValueError('MCP araç tanımı değişti; tekrar keşfet')
         with server.connect() as dispatch:
             dispatch.execute('BEGIN IMMEDIATE')
+            if call['task_id'] and not server.access.owner_can_run(server,dispatch,call['task_id']):raise PermissionError(server.access.DENIED)
             live=dispatch.execute('SELECT enabled,revision FROM mcp_servers WHERE id=?',(call['server_id'],)).fetchone()
             status_row=dispatch.execute('SELECT status FROM mcp_calls WHERE id=?',(ident,)).fetchone()
             if not live or not live['enabled'] or live['revision']!=call['revision'] or status_row[0]!='running':raise PermissionError('MCP izni çağrıdan önce iptal edildi')
@@ -105,6 +107,7 @@ def execute(server,ident):
 def prepare(server,user,sid,name,arguments,task_id=None,auto=False,revision=None):
     if not isinstance(arguments,dict) or len(json.dumps(arguments))>64000:raise ValueError('MCP araç argümanları geçersiz')
     with server.connect() as db:
+        if task_id:server.access.record(db,user,'tasks',task_id,True)
         row=db.execute('SELECT * FROM mcp_servers WHERE id=? AND enabled=1',(sid,)).fetchone()
         if not row or revision is not None and row['revision']!=revision:raise ValueError('MCP bağlantısı veya sürümü değişti')
         tool=next((t for t in json.loads(row['tools']) if t['name']==name),None)

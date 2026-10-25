@@ -169,9 +169,10 @@ def handle_get(handler,user,path,db,server):
         diffs=[{'left':ids[0],'right':item['task']['id'],'text':'\n'.join(difflib.unified_diff(items[0]['content'].splitlines(),item['content'].splitlines(),fromfile=ids[0],tofile=item['task']['id'],lineterm=''))} for item in items[1:]]
         handler.respond(200,{'items':items,'diffs':diffs});return True
     if path=='/api/platform/activity':
-        tasks=[server.task_dict(r) for r in db.execute("SELECT * FROM tasks WHERE status IN ('queued','running','awaiting_approval') ORDER BY created_at")]
-        runs=[dict(r) for r in db.execute("SELECT r.id,r.task_id,r.agent_id,r.kind,r.status,r.created_at,r.finished_at,r.input_tokens,r.output_tokens FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.status IN ('queued','running','awaiting_approval') ORDER BY r.created_at")]
-        events=[dict(r) for r in db.execute('SELECT id,task_id,event,message,created_at FROM logs ORDER BY id DESC LIMIT 100')]
+        clause,params=server.access.sql(user,'t.project_id')
+        tasks=[server.task_dict(r) for r in db.execute("SELECT t.* FROM tasks t WHERE t.status IN ('queued','running','awaiting_approval') AND "+clause+" ORDER BY t.created_at",params)]
+        runs=[dict(r) for r in db.execute("SELECT r.id,r.task_id,r.agent_id,r.kind,r.status,r.created_at,r.finished_at,r.input_tokens,r.output_tokens FROM runs r JOIN tasks t ON t.id=r.task_id WHERE t.status IN ('queued','running','awaiting_approval') AND "+clause+" ORDER BY r.created_at",params)]
+        events=[dict(r) for r in db.execute('SELECT l.id,l.task_id,l.event,l.message,l.created_at FROM logs l LEFT JOIN tasks t ON t.id=l.task_id WHERE '+clause+("" if user['role']=='admin' else ' AND t.id IS NOT NULL')+' ORDER BY l.id DESC LIMIT 100',params)]
         handler.respond(200,{'tasks':tasks,'runs':runs,'events':events,'server_time':server.now()});return True
     if path=='/api/platform/webhooks':
         if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
@@ -216,7 +217,7 @@ def handle_post(handler,user,path,body,server):
     with server.connect() as db:
         db.execute('BEGIN IMMEDIATE')
         pid=body.get('project_id') or None
-        server.workspace.check_project(db,user,pid)
+        server.workspace.check_project(db,user,pid,write=True)
         if path=='/api/platform/findings':
             old=db.execute('SELECT * FROM findings WHERE id=?',(ident,)).fetchone()
             if old:

@@ -41,7 +41,8 @@ def enqueue_notifications(server):
         cfg = telegram_config(server, db)
         if not cfg.get('enabled'):
             return
-        for row in db.execute("SELECT id FROM tasks WHERE notified=0 AND updated_at>=? AND status IN ('completed','failed','incomplete','cancelled','awaiting_approval')", (cfg.get('enabled_since', server.now()),)).fetchall():
+        for row in db.execute("SELECT id,project_id FROM tasks WHERE notified=0 AND updated_at>=? AND status IN ('completed','failed','incomplete','cancelled','awaiting_approval')", (cfg.get('enabled_since', server.now()),)).fetchall():
+            if row['project_id'] and server.access.mode(db,row['project_id'])=='private':continue
             db.execute("INSERT INTO notifications VALUES(?,?,'pending',NULL,?,NULL)", (uuid.uuid4().hex, row['id'], server.now()))
             db.execute('UPDATE tasks SET notified=1 WHERE id=?', (row['id'],))
 
@@ -56,6 +57,8 @@ def send_one(server, opener=None):
         if not row:
             return
         task = db.execute('SELECT * FROM tasks WHERE id=?', (row['task_id'],)).fetchone()
+        if task['project_id'] and server.access.mode(db,task['project_id'])=='private':
+            db.execute("UPDATE notifications SET status='skipped',error='Özel proje için ortak bildirim gönderilmedi' WHERE id=?",(row['id'],));return
         db.execute("UPDATE notifications SET status='sending' WHERE id=?", (row['id'],))
         summary = task['synthesis'] or next((r[0] for r in db.execute("SELECT output FROM runs WHERE task_id=? AND kind='participant' AND output IS NOT NULL ORDER BY created_at DESC", (task['id'],))), '')
     # Default notification contains only status and amount. Titles/output require an explicit setting.

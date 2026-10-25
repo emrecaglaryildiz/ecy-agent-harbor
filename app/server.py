@@ -12,7 +12,7 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from .time_utils import APP_TIMEZONE, local_day, day_window
-from . import platform, security, mcp_registry, mfa, playbooks, incidents, privacy, lab, operations, health
+from . import platform, security, mcp_registry, mfa, playbooks, incidents, privacy, lab, operations, health, access
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -124,6 +124,7 @@ def initialize():
             if column.split()[0] not in {r[1] for r in db.execute("PRAGMA table_info(tasks)")}:
                 db.execute("ALTER TABLE tasks ADD COLUMN " + column)
         workspace.initialize(db)
+        access.initialize(db)
         platform.initialize(db)
         mcp_registry.initialize(db)
         mfa.initialize(db)
@@ -338,6 +339,9 @@ def delete_history(user, body):
                 running = db.execute("SELECT 1 FROM runs WHERE task_id=? AND status='running'", (row["id"],)).fetchone()
                 if row["status"] not in ("completed", "failed", "cancelled", "incomplete") or row["reserved"] or running:
                     raise ValueError("Çalışan, kuyruktaki veya onay bekleyen görev silinemez")
+        if clear_all:rows=[r for r in rows if access.level(db,user,r['project_id'])=='write']
+        else:
+            for row in rows:access.check(db,user,row['project_id'],True)
         for row in rows:
             playbooks.capture(sys.modules[__name__],db,row["id"])
             lab.capture(sys.modules[__name__],db,row["id"])
@@ -421,7 +425,12 @@ def reserve_for(ids, judge, prompt=""):
                  (call_reserve(BY_ID[judge], prompt, len(ids)) if judge else 0), 6)
 
 
-def usage_today(db):
+def usage_today(db,user=None):
+    if user and user['role']!='admin':
+        _,start,end=day_window(now());clause,params=access.sql(user,'tasks.project_id')
+        params.update(day_start=start,day_end=end)
+        row=db.execute("SELECT coalesce(sum(cost),0),coalesce(sum(CASE WHEN julianday(created_at)>=julianday(:day_start) AND julianday(created_at)<julianday(:day_end) THEN cost ELSE 0 END),0) FROM tasks WHERE "+clause,params).fetchone()
+        return {'cost':row[1],'reserved':0,'total_cost':row[0],'timezone':APP_TIMEZONE,'legacy_daily_estimate':False,'scope':'accessible_tasks','includes_deleted':False}
     day, start, end = day_window(now())
     cost = db.execute("SELECT coalesce(sum(cost),0) FROM tasks WHERE julianday(created_at)>=julianday(?) AND julianday(created_at)<julianday(?)", (start, end)).fetchone()[0]
     # Legacy deleted records only retained a UTC date; preserve their day and total.
@@ -543,7 +552,9 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
     rid = uuid.uuid4().hex
     with connect() as db:
         task = db.execute("SELECT status,agents,web_enabled FROM tasks WHERE id=?", (tid,)).fetchone()
-        if task[0] != "running":
+        if task and task[0]=="running" and not access.owner_can_run(sys.modules[__name__],db,tid):
+            db.execute("UPDATE tasks SET status='cancelled',error=?,updated_at=? WHERE id=?",(access.DENIED,now(),tid));return None
+        if not task or task[0] != "running":
             return None
         db.execute("INSERT INTO runs(id,task_id,agent_id,kind,status,created_at) VALUES(?,?,?,?,?,?)", (rid, tid, aid, kind, "running", now()))
         db.execute("UPDATE runs SET request_state=? WHERE id=?", (json.dumps({"prompt": prompt, "context": context, "continuation": continuation}, ensure_ascii=False), rid))
@@ -590,12 +601,12 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
             def cancelled():
                 with connect() as task_db:
                     row = task_db.execute("SELECT status FROM tasks WHERE id=?", (tid,)).fetchone()
-                    return not row or row[0] == "cancelled"
+                    return not row or row[0] == "cancelled" or not access.owner_can_run(sys.modules[__name__],task_db,tid)
             agent["_cancelled"] = cancelled
         def cancelled():
             with connect() as task_db:
                 row = task_db.execute("SELECT status FROM tasks WHERE id=?", (tid,)).fetchone()
-                return not row or row[0] == "cancelled"
+                return not row or row[0] == "cancelled" or not access.owner_can_run(sys.modules[__name__],task_db,tid)
         agent["_cancelled"] = cancelled
         partial, last_flush = [], [0.0]
         def save_delta(delta):
@@ -832,6 +843,7 @@ class Handler(BaseHTTPRequestHandler):
             return dict(db.execute("SELECT * FROM users WHERE id=?", (session["uid"],)).fetchone()), session
 
     def do_GET(self):
+        authenticated=False
         try:
             self._header_timer.cancel()
             if getattr(self,'_headers_expired',False):raise ValueError('HTTP başlık süresi doldu')
@@ -849,7 +861,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200, {"mode": MODE, "setup_required": requires_setup()})
             if path.startswith("/api/"):
                 user, session = self.user()
+                authenticated=True
                 with connect() as db:
+                    access.preflight(db,user,path,self.path)
+                    if access.handle_get(self,user,path,db,sys.modules[__name__]):return
                     if path == '/api/security/posture':
                         if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
                         return self.respond(200,security.posture(sys.modules[__name__]) | {'mfa':mfa.statuses(db)})
@@ -878,9 +893,9 @@ class Handler(BaseHTTPRequestHandler):
                             "providers": provider_summary(db),
                             "browser": browser_status(DB_PATH),
                             "agents": [public_agent(a) for a in AGENTS if not a.get("deleted")], "daily_limit": DAILY_LIMIT,
-                            "tasks": [task_dict(r) for r in workspace.task_list(db, self.path)],
-                            "approvals": [dict(r) for r in db.execute("SELECT a.*,t.title FROM approvals a JOIN tasks t ON a.task_id=t.id ORDER BY a.created_at DESC LIMIT 100")],
-                            "usage": usage_today(db)})
+                            "tasks": [task_dict(r) for r in workspace.task_list(db, self.path,user)],
+                            "approvals": [dict(r) for r in db.execute("SELECT a.*,t.title FROM approvals a JOIN tasks t ON a.task_id=t.id WHERE "+access.sql(user,"t.project_id")[0]+" ORDER BY a.created_at DESC LIMIT 100",access.sql(user,"t.project_id")[1])],
+                            "usage": usage_today(db,user)})
                     if path.startswith("/api/tasks/") and path.endswith("/export"):
                         from .exports import export_report
                         tid = path.split("/")[-2]
@@ -923,7 +938,7 @@ class Handler(BaseHTTPRequestHandler):
                 static[path] = ('brand.svg', 'image/svg+xml')
             if path == '/locales/en.json':
                 static[path] = ('locales/en.json', 'application/json; charset=utf-8')
-            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js', '/mcp.js', '/playbooks.js', '/incidents.js', '/privacy.js', '/lab.js', '/operations.js'):
+            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js', '/mcp.js', '/playbooks.js', '/incidents.js', '/privacy.js', '/lab.js', '/operations.js', '/project-access.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
                 return self.respond(404, {"error": "Bulunamadı"})
@@ -935,7 +950,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         except PermissionError as exc:
-            self.respond(401, {"error": str(exc)})
+            self.respond(403 if authenticated else 401, {"error": str(exc)})
         except ValueError as exc:
             self.respond(400, {"error": str(exc)})
         except Exception:
@@ -1017,6 +1032,8 @@ class Handler(BaseHTTPRequestHandler):
                 secure = "; Secure" if os.getenv("COOKIE_SECURE") == "1" else ""
                 return self.respond(200, {"ok": True}, "harbor=" + sid + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800" + secure)
             user, session = self.user()
+            with connect() as scope_db:access.preflight(scope_db,user,path,self.path,body)
+            if access.handle_post(self,user,path,body,sys.modules[__name__]):return
             if mfa.handle_post(self,user,path,body,sys.modules[__name__]):
                 return
             if mcp_registry.handle_post(self,user,path,body,sys.modules[__name__]):

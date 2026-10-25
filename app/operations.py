@@ -84,8 +84,9 @@ def handle_get(handler,user,path,db,server):
     for agent in server.AGENTS:
         row=db.execute('SELECT * FROM provider_circuits WHERE id=?',(key(agent),)).fetchone()
         providers.append({'agent_id':agent['id'],'failures':row['failures'] if row else 0,'state':'cooldown' if row and row['open_until']>now else 'probe' if row and row['failures']>=3 else 'closed','retry_at':row['open_until'] if row and row['open_until']>now else None})
-    counts={r['status']:r['n'] for r in db.execute('SELECT status,count(*) n FROM tasks GROUP BY status')}
-    oldest=db.execute("SELECT min(created_at) FROM tasks WHERE status='queued'").fetchone()[0]
+    clause,params=server.access.sql(user,'tasks.project_id')
+    counts={r['status']:r['n'] for r in db.execute('SELECT status,count(*) n FROM tasks WHERE '+clause+' GROUP BY status',params)}
+    oldest=db.execute("SELECT min(created_at) FROM tasks WHERE status='queued' AND "+clause,params).fetchone()[0]
     handler.respond(200,{'nodes':nodes,'providers':providers,'counts':counts,'oldest_queued_at':oldest,'server_time':now});return True
 
 

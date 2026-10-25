@@ -5,7 +5,7 @@ import sys
 import time
 import uuid
 from urllib.parse import parse_qs, urlparse
-from . import files
+from . import files, access
 
 BUILTINS = [
     {'id': 'security-log', 'name': 'Şüpheli log incele', 'description': 'Dosya ve satır kanıtıyla olay incelemesi', 'builtin': True,
@@ -41,17 +41,13 @@ def writable(user, owner):
         raise PermissionError('Bu kaydı yalnızca sahibi veya yönetici değiştirebilir')
 
 
-def check_project(db, user, pid):
-    if pid is not None and not isinstance(pid, str):
-        raise ValueError('Geçersiz proje')
-    if pid and not db.execute('SELECT 1 FROM projects WHERE id=?', (pid,)).fetchone():
-        raise ValueError('Proje bulunamadı')
-    # Projects are shared within this personal workspace; role and record ownership protect writes.
+def check_project(db, user, pid, write=False):
+    access.check(db,user,pid,write)
 
 
 def task_options(db, user, body, server):
     pid = body.get('project_id') or None
-    check_project(db, user, pid)
+    check_project(db, user, pid, write=True)
     ids = body.get('file_ids', [])
     if not isinstance(ids, list) or len(ids) > 20 or any(not isinstance(fid, str) for fid in ids) or len(set(ids)) != len(ids):
         raise ValueError('En fazla 20 farklı dosya seçebilirsin')
@@ -107,12 +103,18 @@ def integration_public(db):
 
 
 def state(db, user):
-    return {'projects': [dict(r) for r in db.execute('SELECT * FROM projects ORDER BY created_at')],
-            'files': [files.metadata(r) for r in db.execute('SELECT * FROM files ORDER BY created_at DESC')],
-            'templates': BUILTINS + [dict(r) | {'config': json.loads(r['config']), 'builtin': False} for r in db.execute('SELECT * FROM templates ORDER BY created_at')],
-            'schedules': [dict(r) | {'config': json.loads(r['config'])} for r in db.execute('SELECT * FROM schedules ORDER BY created_at DESC')],
-            'telegram': integration_public(db) if user['role'] == 'admin' else {},
-            'notifications': [dict(r) for r in db.execute('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50')] if user['role'] == 'admin' else []}
+    projects=[]
+    for row in db.execute('SELECT * FROM projects ORDER BY created_at'):
+        grant=access.level(db,user,row['id'])
+        if grant:projects.append(dict(row)|{'visibility':access.mode(db,row['id']),'access':grant,'can_manage':user['role']=='admin' or user['role']!='viewer' and row['owner_id']==user['id']})
+    clause,params=access.sql(user,'files.project_id')
+    records={}
+    for table in ('templates','schedules'):
+        records[table]=[dict(r)|{'config':json.loads(r['config'])} for r in db.execute('SELECT * FROM '+table+' ORDER BY created_at DESC') if access.level(db,user,json.loads(r['config']).get('project_id'))]
+    return {'projects':projects,'files':[files.metadata(r) for r in db.execute('SELECT * FROM files WHERE '+clause+' ORDER BY created_at DESC',params)],
+            'templates':BUILTINS+[r|{'builtin':False} for r in records['templates']],'schedules':records['schedules'],
+            'telegram':integration_public(db) if user['role']=='admin' else {},
+            'notifications':[dict(r) for r in db.execute('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50')] if user['role']=='admin' else []}
 
 
 def handle_get(handler, user, path, db, server):
@@ -158,11 +160,15 @@ def handle_post(handler, user, path, body, server):
             existing = db.execute('SELECT * FROM projects WHERE id=?', (body.get('id'),)).fetchone()
             if body.get('id') and not existing:
                 raise ValueError('Proje bulunamadı')
+            visibility=body.get('visibility',access.mode(db,existing['id']) if existing else 'private')
+            if visibility not in ('workspace','private'):raise ValueError('Proje görünürlüğü geçersiz')
             if existing:
                 writable(user, existing['owner_id']); ident = existing['id']
                 db.execute('UPDATE projects SET name=?,instruction=? WHERE id=?', (name.strip(), instruction, ident))
             else:
                 db.execute('INSERT INTO projects VALUES(?,?,?,?,?)', (ident, name.strip(), instruction, user['id'], server.now()))
+            db.execute('INSERT OR REPLACE INTO project_access VALUES(?,?)',(ident,visibility))
+            access.cancel_disallowed(server,db,ident,user['id'])
         elif path == '/api/projects/delete':
             row = db.execute('SELECT * FROM projects WHERE id=?', (body.get('id'),)).fetchone()
             if not row:
@@ -246,10 +252,11 @@ def handle_post(handler, user, path, body, server):
     handler.respond(201, {'id': ident, 'ok': True}); return True
 
 
-def task_list(db, url):
-    query = parse_qs(urlparse(url).query)
+def task_list(db, url, user=None):
+    query=parse_qs(urlparse(url).query)
+    clause,params=access.sql(user or {'id':'admin','role':'admin'},'tasks.project_id')
     if 'project_id' in query:
-        pid = query['project_id'][0]
-        pid = '' if pid == '__general' else pid
-        return [dict(r) for r in db.execute("SELECT * FROM tasks WHERE coalesce(project_id,'')=? ORDER BY created_at DESC LIMIT 100", (pid,))]
-    return [dict(r) for r in db.execute('SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100')]
+        pid=query['project_id'][0];pid=None if pid=='__general' else pid
+        if user:check_project(db,user,pid)
+        clause+=' AND project_id IS :selected_project';params['selected_project']=pid
+    return [dict(r) for r in db.execute('SELECT * FROM tasks WHERE '+clause+' ORDER BY created_at DESC LIMIT 100',params)]
