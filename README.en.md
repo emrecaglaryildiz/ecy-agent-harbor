@@ -43,7 +43,7 @@ Navigation, forms, dialogs, statuses, system messages, dates, and report metadat
 
 ## Connect agents
 
-1. Open **Providers & access → Add agent**.
+1. Open **Management → Agents & API → Add agent**.
 2. Enter the name, expertise, provider type, exact model ID, and API base URL.
 3. For an OpenAI-compatible service, include its version path such as `/v1`. The application appends `/chat/completions`.
 4. Add a key if the endpoint requires one. Leave it blank for an unauthenticated local inference server.
@@ -99,7 +99,7 @@ The provider summary counts working, failing, and untested endpoints from recent
 
 ## Schedules and Telegram
 
-Use **Schedule** in the studio to save a recurring task. The interval is expressed in minutes; the first-run input uses the browser's local time. The database stores an epoch timestamp. The application must remain running.
+Use **Schedule** in the studio to save a recurring task. The interval is expressed in minutes; all displayed times and the first-run input use Istanbul (Europe/Istanbul, GMT+03:00), independently of the browser. The database stores an epoch timestamp. The application must remain running.
 
 Missed intervals do not create a burst of old tasks. A schedule will not overlap its previous queued, running, or approval-pending task. Invalid configurations pause the schedule with an explanation. Recurring calls may incur provider charges.
 

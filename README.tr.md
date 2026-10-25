@@ -75,7 +75,7 @@ Port yalnızca 127.0.0.1 üzerinde yayınlanır. İlk kurulum yine `localhost:80
 
 ## Kendi ajanını ekle
 
-1. **Sağlayıcılar & erişim → Yeni ajan ekle** ekranını aç.
+1. **Yönetim → Ajanlar & API → Yeni ajan ekle** ekranını aç.
 2. Ajan adı, uzmanlık, model kimliği ve API türünü seç.
 3. API adresini gir. OpenAI uyumlu API için servisinin base URL adresini kullan; sürüm yolu varsa dahil et. `/chat/completions` uygulama tarafından eklenir.
 4. API anahtarını gir. Anahtarsız yerel inference sunucularında boş bırakılabilir.
@@ -209,7 +209,7 @@ Metin yine boşsa görev `incomplete / empty_response` olur; tamamlandı sayılm
 2. Dosyalarını stüdyoda yükleyip kutularından seç. Yalnızca seçilen dosyalar görev sağlayıcılarına aktarılır. Metin UTF-8 olmalıdır. Varsayılan dosya sınırı 32 MB, görev başına en fazla 20 dosyadır; bu sınır model yanıtı veya harcama kotası değildir. `MAX_FILE_BYTES` sunucu yükleme sınırını değiştirebilir.
 3. Büyük metinlerin her parçası ayrı incelenir. Ara çıktılar görevde korunur; bulgular kaynak kimliği/satır aralığıyla birleştirilir. Birleştirme modeli özeti küçültemezse görev açık hatayla durur; veri sessizce kırpılmaz. Bu işlem birden fazla sağlayıcı çağrısı ve ücret oluşturabilir. Görselleri görsel destekleyen OpenAI uyumlu model işler. PDF için metin çıkarımı yapılır; taranmış PDF OCR içermez.
 4. Ajan topluluğunda en az iki uzmanla **karşılıklı eleştiri turu**nu açabilirsin. Baş uzman, uzlaşılan bulguları ve tartışmalı noktaları kaynaklarıyla birleştirir. Kaynak envanteri, dosya aralığının varlığını kontrol eder; bir iddianın doğru olduğunu otomatik onaylamaz. Web bağlantıları modelin atıf yaptığı adresler olarak etiketlenir.
-5. **Şablon kaydet** görev ayarlarını, projeyi ve dosya seçimlerini saklar. **Zamanla** aynı ayarlarla aralıklı görev başlatır. İlk tarih tarayıcının yerel saatinde girilir; veritabanı epoch zamanını saklar. Uygulama açık olmalıdır. Kaçırılan aralıklar topluca çalıştırılmaz; aynı zamanlamanın açık görevi varsa çakışan çağrı yapılmaz. Yapılandırması geçersiz zamanlama açıklamayla duraklatılır.
+5. **Şablon kaydet** görev ayarlarını, projeyi ve dosya seçimlerini saklar. **Zamanla** aynı ayarlarla aralıklı görev başlatır. Tüm ekran saatleri ve ilk çalışma tarihi İstanbul (Europe/Istanbul, GMT+03:00) saatindedir; tarayıcının saat diliminden etkilenmez; veritabanı epoch zamanını saklar. Uygulama açık olmalıdır. Kaçırılan aralıklar topluca çalıştırılmaz; aynı zamanlamanın açık görevi varsa çakışan çağrı yapılmaz. Yapılandırması geçersiz zamanlama açıklamayla duraklatılır.
 6. **Otomasyonlar → Telegram** bölümünde bot anahtarını ve sohbet kimliğini kaydet. Anahtar şifrelenir; boş bırakılırsa korunur. Etkinleştirilene kadar mesaj çıkmaz. Varsayılan mesaj kimlik/durum/USD tutarıdır; başlık ve ilk 1.000 karakterlik özeti göndermek ayrı seçimdir. Rapor bağlantısı için kendi erişilebilir uygulama adresini gir; bağlantı oturum gerektirir. Kaydetmek test mesajı göndermez. Telegram'ın `sendMessage` sözleşmesi kullanılır: [resmî API](https://core.telegram.org/bots/api#sendmessage).
 7. Teslimatı belirsiz Telegram mesajları otomatik tekrarlanmaz. Elle tekrar gönderme kopya mesaj oluşturabilir. Görev ekranındaki **Bu adımı yeniden dene** yalnızca seçilen başarısız/eksik adımın kayıtlı girdisini çalıştırır. Bu işlem önceki görevi silmez ve sağlayıcı tarafından ücretlendirilebilir.
 

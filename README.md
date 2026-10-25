@@ -76,3 +76,11 @@ When using, distributing, modifying, or hosting this software, retain the follow
 > ECY Agent Harbor — Emre Çağlar YILDIZ
 
 See [LICENSE](LICENSE) for the exact conditions. This is a custom license based on MIT permissions with an additional visible-attribution requirement; it is not standard MIT. Third-party notices remain applicable. / Kesin koşullar [LICENSE](LICENSE) dosyasındadır. MIT izinlerine görünür atıf şartı ekleyen özel bir lisanstır; standart MIT değildir. Üçüncü taraf lisans bildirimleri korunur.
+
+Saat dilimi / Time zone: **Europe/Istanbul (GMT+03:00)**. Görevler, loglar, raporlar ve günlük kullanım İstanbul saatine göre gösterilir. Tasks, logs, reports and daily usage follow Istanbul time. Stored timestamps remain UTC. Legacy deleted cost entries with only a UTC date retain their original date; lifetime totals remain exact.
+
+### Yönetim / Management
+
+Ayarlar tek menüde: Ajanlar & API, İnternet erişimi, Hesaplar & yetkiler, Bildirimler ve Kullanım. / Settings are grouped under one Management menu: Agents & API, Internet access, Accounts & permissions, Notifications, and Usage.
+
+![Yönetim / Management](docs/preview-management.png)
