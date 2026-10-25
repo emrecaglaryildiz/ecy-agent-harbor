@@ -12,7 +12,7 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from .time_utils import APP_TIMEZONE, local_day, day_window
-from . import platform, security, mcp_registry, mfa, playbooks, incidents, privacy, lab, operations
+from . import platform, security, mcp_registry, mfa, playbooks, incidents, privacy, lab, operations, health
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -836,7 +836,12 @@ class Handler(BaseHTTPRequestHandler):
             self._header_timer.cancel()
             if getattr(self,'_headers_expired',False):raise ValueError('HTTP başlık süresi doldu')
             path = urlparse(self.path).path
-            if not (path=='/api/health' and security.loopback(self.client_address[0])):security.allowed_host(self)
+            if not (path in ('/api/health','/api/health/live','/api/health/ready') and security.loopback(self.client_address[0])):security.allowed_host(self)
+            if path == '/api/health/live':
+                return self.respond(200, {'ok': True})
+            if path == '/api/health/ready':
+                available=health.ready(sys.modules[__name__])
+                return self.respond(200 if available else 503, {'ok': available})
             if path == "/api/health":
                 return self.respond(200, {"ok": True, "mode": MODE})
             security.rate_limit(('get',self.client_address[0]),limit=600)
