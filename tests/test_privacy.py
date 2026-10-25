@@ -112,3 +112,12 @@ class PrivacyTests(unittest.TestCase):
         body={'model':'model-id','messages':[{'role':'assistant','content':'password=secret','reasoning_details':opaque,'tool_calls':[{'id':'call-123','type':'function','function':{'name':'lookup','arguments':json.dumps({'password':'two word secret'})}}]}]}
         wire=privacy.outbound(body,'seed');message=wire['messages'][0]
         self.assertEqual(message['reasoning_details'],opaque);self.assertEqual(message['tool_calls'][0]['id'],'call-123');self.assertNotIn('two word secret',json.dumps(message['tool_calls']));self.assertNotIn('password=secret',message['content']);self.assertEqual(body['messages'][0]['content'],'password=secret')
+
+    def test_paged_preview_preserves_all_large_file_text(self):
+        raw='evidence line\n'*4000;fid=self.upload(raw);cfg=self.config(mask_sensitive=False,file_ids=[fid])
+        code,preview=self.client.request('/api/context/preview',cfg);self.assertEqual(code,200,preview)
+        source=next(s for s in preview['sources'] if s['id']=='file:'+fid);self.assertEqual(source['characters'],len(raw))
+        pages=[];offset=0
+        while offset is not None:
+            code,page=self.client.request('/api/context/page',{'id':preview['id'],'config':cfg,'source_id':source['id'],'offset':offset});self.assertEqual(code,200,page);pages.append(page['text']);offset=page['next_offset']
+        self.assertEqual(''.join(pages),raw)
