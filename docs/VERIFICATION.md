@@ -44,3 +44,7 @@ Devam ettirme, tek adımı yeniden deneme ve önceki analizden takip görevi aç
 ## Local evidence search
 
 89 Python tests pass. Search regressions cover project isolation, literal regex-like input, Turkish case-insensitive matching, CR/CRLF source line consistency, 121 results across three pages, a 200 KB single log line, viewer access, invalid parameters, and anonymous rejection. Browser checks covered Turkish/English language switching, highlighted results, source line opening, attaching a file without starting a task, and mobile layout without horizontal overflow. Language and Istanbul scheduling Node checks pass. No paid provider calls were used.
+
+## Eight platform phases
+
+101 isolated Python tests pass, including conversation ancestry/new evidence, comparison, audited findings, explicit project knowledge, model snapshots/live activity, declared capability rejection, encrypted backup round-trip and tampering/path traversal rejection, restoration with automations disabled, scoped webhook authorization/idempotency/revocation, and admin-only controls. Both Node suites and syntax checks for all application scripts pass. Browser checks use mock providers and disposable sample records. See [ROADMAP-PLATFORM.md](ROADMAP-PLATFORM.md) and [PLATFORM.md](PLATFORM.md).

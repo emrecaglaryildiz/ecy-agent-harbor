@@ -105,3 +105,26 @@ Zamanlayıcı her beş saniyede kontrol eder; iş kaydı ve `next_run` aynı SQL
 `GET /api/files/search?q=401&project_id=__general&offset=0&limit=50` requires an authenticated session (all roles). Use a project ID to search that shared project, or omit `project_id` / use `__general` for general workspace files. A missing project returns 400. Literal Unicode case-insensitive queries must be 1–200 characters on one line. `limit` is 1–100; offset is a nonnegative count of matching lines to skip.
 
 Response: `{results:[{file:{...metadata},line:2,snippet:"...",match_start:10,match_end:13,prefix_omitted:false,suffix_omitted:false}],offset:0,next_offset:null}`. Match positions are Unicode code-point offsets for the snippet; JavaScript clients should slice `Array.from(snippet)` to preserve emoji and other non-BMP characters. Each matching source line appears once, even if it contains several matches. `next_offset` points to the next page or is null when exhausted. Images are excluded; text extracted from PDFs is included. Search uses a direct scan, has no model cost, and returns plain data. Render snippets as escaped text. Source lines use the same numbering as `/api/files/{id}`. There is no snapshot isolation between separate pages; file changes can shift results.
+
+## Platform phases
+
+All `/api/platform/*` endpoints require a session; POST also requires CSRF. Projects are shared, while record writes remain owner/admin scoped.
+
+| Method | Route | Access / function |
+|---|---|---|
+| GET | `/api/platform/thread?task=ID` | all roles; conversation tasks and full visible reports |
+| POST | `/api/tasks/ID/followup` | owner/operator or admin; `{prompt,language,file_ids:[additional evidence]}` |
+| GET | `/api/platform/compare?ids=A,B` | all roles; 2–4 full reports, run snapshots, metrics and text diffs |
+| GET | `/api/platform/activity` | all roles; global active queue/stages and recent 100 events |
+| GET | `/api/platform/findings?project_id=ID` | all roles; findings with immutable edit snapshots |
+| POST | `/api/platform/findings` | operator/admin; `{id?,project_id,title,details,severity,status,task_id?,file_id?,first_line?,last_line?}`; existing owner/admin only |
+| GET | `/api/platform/knowledge?project_id=ID&q=literal` | all roles; notes, report matches and first page of file matches |
+| POST | `/api/platform/knowledge` | operator/admin; `{project_id,title,content}` or `{project_id,title,source_task}` |
+| POST | `/api/platform/knowledge/delete` | owner/admin; `{id}` |
+| POST | `/api/platform/backup` | admin; `{password}` → encrypted binary attachment |
+| GET | `/api/platform/webhooks` | admin; config/status without token hashes or plaintext tokens |
+| POST | `/api/platform/webhooks` | admin; `{name,config}` → `{id,token}` once |
+| POST | `/api/platform/webhooks/revoke` | admin; `{id}` |
+| POST | `/api/hooks/ID` | scoped bearer token, JSON `{prompt}`, mandatory `Idempotency-Key`; 201 first call, 200 replay |
+
+Tasks, templates and webhook configuration accept `knowledge_ids` explicitly; cross-project knowledge is rejected. Agent settings accept `capabilities:{vision:true|false|null,tools:true|false|null,context_tokens:number|null,specialties:[strings]}`. Run responses now include `finished_at`, `model_snapshot`, `provider_snapshot`, `agent_name_snapshot`; legacy snapshots may be null. Full backup/restore behavior and webhook contracts: [PLATFORM.md](PLATFORM.md).
