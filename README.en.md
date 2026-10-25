@@ -162,3 +162,39 @@ Open **Projects & files → Search file contents**. Search the selected project'
 ## Investigation platform
 
 All eight platform phases are available: task conversations, report comparison, findings/actions, live activity, a project knowledge bank, declared agent capabilities, encrypted backup/restore and scoped incoming webhooks. Open the new sidebar sections or **Management → Backup / Webhook connections**. See [the platform guide](docs/PLATFORM.md) for workflows, costs, restore instructions and operational limitations.
+
+## MCP & security / MCP ve güvenlik
+
+[Tool center / Araç merkezi](docs/MCP.md) · [Secure deployment / Güvenli yayın](docs/SECURITY-DEPLOYMENT.md) · [Next phases / Sonraki fazlar](docs/NEXT-PHASES.md) · [Security policy](SECURITY.md)
+
+First setup now requires the local terminal bootstrap code. Enroll MFA in Management → Security before public deployment. / İlk kurulum artık yerel terminal kodunu gerektirir. Dış erişim öncesi Yönetim → Güvenlik üzerinden MFA kur.
+
+![MCP tool center / MCP araç merkezi](docs/preview-mcp-center.png)
+
+![Security settings / Güvenlik ayarları](docs/preview-security.png)
+
+## Task playbooks / Görev reçeteleri
+
+Build reusable multi-step tasks, review each step before dispatch, pause/cancel safely and retain attempts. / Tekrarlanabilir işleri adımlara böl, her adımı inceleyip başlat, duraklat/iptal et ve deneme geçmişini koru. [Guide / Kılavuz](docs/PLAYBOOKS.md).
+
+## Incident desk / Olay masası
+
+Local log grouping with exact source lines, human confidence assessments and approved action tracking. No automatic external remediation. / Yerel log gruplama, kaynak satırları, insan güven değerlendirmesi ve onaylı aksiyon takibi. [Guide / Kılavuz](docs/INCIDENT-DESK.md).
+
+## Context, model lab & operations / Bağlam, model laboratuvarı ve operasyon
+
+Local source preview and opt-in text masking; explicit comparable model trials with human ratings and optional judge; scoped node heartbeats and provider circuit breakers. / Yerel kaynak önizlemesi ve metin maskeleme; insan puanlı, seçilebilir baş uzmanlı model denemeleri; sınırlı düğüm sağlık sinyalleri ve sağlayıcı devre kesicileri. [Guide / Kılavuz](docs/PRIVACY-LAB-OPERATIONS.md).
+
+## New workflow screens / Yeni akış ekranları
+
+Isolated mock workspace with fictional data and example ratings; no real hardware/model benchmark is claimed. / Kurgu verili izole test alanı; örnek puanlar gerçek model veya donanım ölçümü değildir.
+
+![Context preview / Bağlam önizlemesi](docs/preview-context.png)
+
+![Model lab / Model laboratuvarı](docs/preview-model-lab.png)
+
+![Playbooks / Görev reçeteleri](docs/preview-playbooks.png)
+
+![Incident desk / Olay masası](docs/preview-incidentdesk.png)
+
+![Operations / Operasyon](docs/preview-operations.png)

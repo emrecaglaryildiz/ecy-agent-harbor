@@ -1,0 +1,36 @@
+# Explicit opt-in deployment template. Never run before local enrollment + MFA.
+# Requires Docker Compose supporting !reset. Preserve the same project/data volume.
+services:
+  harbor:
+    ports: !reset []
+    environment:
+      EXPOSURE_MODE: public
+      PUBLIC_ORIGIN: https://${HARBOR_DOMAIN:?Set HARBOR_DOMAIN after local enrollment}
+      COOKIE_SECURE: '1'
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 192
+  gateway:
+    image: caddy:2.11.7
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      HARBOR_DOMAIN: ${HARBOR_DOMAIN:?Set HARBOR_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - harbor-tls:/data
+      - harbor-caddy-config:/config
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+volumes:
+  harbor-tls:
+  harbor-caddy-config:

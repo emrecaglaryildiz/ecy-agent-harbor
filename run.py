@@ -2,7 +2,7 @@
 import importlib.util
 import sys
 
-missing = [name for name in ("cryptography", "reportlab") if importlib.util.find_spec(name) is None]
+missing = [name for name in ("cryptography", "reportlab", "pypdf", "jsonschema") if importlib.util.find_spec(name) is None]
 if missing:
     print("Eksik bileşenler: " + ", ".join(missing))
     print("Proje klasöründe Başlat.command dosyasını çalıştır; gerekli bileşenleri kurar.")
