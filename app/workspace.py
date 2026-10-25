@@ -57,7 +57,7 @@ def task_options(db, user, body, server):
         raise ValueError('En fazla 20 farklı dosya seçebilirsin')
     rows = []
     for fid in ids:
-        row = db.execute('SELECT * FROM files WHERE id=?', (fid,)).fetchone()
+        row = db.execute('SELECT id,project_id,kind FROM files WHERE id=?', (fid,)).fetchone()
         if not row or row['project_id'] != pid:
             raise ValueError('Dosyalar seçilen proje alanından olmalı')
         rows.append(row)

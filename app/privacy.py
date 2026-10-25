@@ -83,8 +83,8 @@ def sources(server,db,user,cfg):
         row=db.execute('SELECT title,content FROM knowledge WHERE id=?',(kid,)).fetchone()
         result.append({'id':'knowledge:'+kid,'name':row['title'],'text':row['content'],'kind':'text'})
     for fid in cfg.get('file_ids',[]):
-        row=db.execute('SELECT name,kind,text,sha256 FROM files WHERE id=?',(fid,)).fetchone()
-        result.append({'id':'file:'+fid,'name':row['name'],'text':row['text'] or '', 'kind':row['kind'],'sha256':row['sha256']})
+        row=db.execute('SELECT name,kind,length(text) characters,sha256 FROM files WHERE id=?',(fid,)).fetchone()
+        result.append({'id':'file:'+fid,'name':row['name'],'text':'', 'characters':row['characters'] or 0,'kind':row['kind'],'sha256':row['sha256']})
     return result
 
 
@@ -113,7 +113,7 @@ def handle_post(handler,user,path,body,server):
         db.execute('DELETE FROM context_previews WHERE created_at<? OR used=1',(time.time()-1800,))
         if db.execute('SELECT count(*) FROM context_previews WHERE owner_id=?',(user['id'],)).fetchone()[0]>=100:raise ValueError('Önizleme sayısı dolu; eski önizlemelerin sona ermesini bekle')
         db.execute('INSERT INTO context_previews VALUES(?,?,?,?,?,?,0)',(ident,user['id'],digest(cfg),digest(rows),seed,time.time()))
-    meta=[{k:v for k,v in s.items() if k!='text'}|{'characters':len(s['text'])} for s in rows]
+    meta=[{k:v for k,v in s.items() if k!='text'}|{'characters':s.get('characters',len(s['text']))} for s in rows]
     handler.respond(200,{'id':ident,'sources':meta,'mask_sensitive':cfg['mask_sensitive']});return True
 
 
@@ -126,7 +126,9 @@ def page(handler,user,body,server):
         source=next((s for s in rows if s['id']==body.get('source_id')),None)
         offset=body.get('offset',0)
         if not source or type(offset) is not int or offset<0:raise ValueError('Önizleme sayfası geçersiz')
-        raw=source['text'];content=redact(raw,row['seed']) if cfg['mask_sensitive'] else raw
+        raw=source['text']
+        if source['id'].startswith('file:') and source['kind']=='text':raw=db.execute('SELECT text FROM files WHERE id=?',(source['id'][5:],)).fetchone()[0]
+        content=redact(raw,row['seed']) if cfg['mask_sensitive'] else raw
         result={'text':content[offset:offset+16000],'characters':len(content),'offset':offset,'next_offset':offset+16000 if len(content)>offset+16000 else None,'changed':raw!=content}
     handler.respond(200,result)
 
