@@ -1,0 +1,36 @@
+name: Test and dependency checks
+on: [push, pull_request, workflow_dispatch]
+concurrency:
+  group: harbor-checks-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      APP_MODE: mock
+      MOCK_DELAY: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt pip-audit
+      - run: python -m unittest discover -s tests -v
+      - run: node tests/test_i18n.cjs && node tests/test_time.cjs
+      - run: for file in static/*.js; do node --check "$file"; done
+      - run: python -m pip_audit -r requirements.txt
+  container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tests/container_smoke.py
