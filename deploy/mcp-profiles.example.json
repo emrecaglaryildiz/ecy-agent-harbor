@@ -1,0 +1,7 @@
+{
+  "trusted-local-tools": {
+    "command": "/absolute/path/to/trusted-mcp-server",
+    "args": ["--stdio"],
+    "env_keys": []
+  }
+}

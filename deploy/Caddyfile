@@ -1,0 +1,29 @@
+{
+    admin off
+    servers {
+        max_header_size 16KB
+        timeouts {
+            read_header 10s
+            read_body 60s
+            idle 2m
+        }
+    }
+}
+
+{$HARBOR_DOMAIN} {
+    request_body {
+        max_size 46MB
+    }
+    @bootstrap path /api/setup
+    respond @bootstrap 403
+    reverse_proxy harbor:8080 {
+        header_up Host {$HARBOR_DOMAIN}
+        header_up -Forwarded
+        header_up -X-Forwarded-For
+        transport http {
+            dial_timeout 3s
+            response_header_timeout 130s
+            max_conns_per_host 32
+        }
+    }
+}
