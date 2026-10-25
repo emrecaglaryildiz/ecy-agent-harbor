@@ -5,3 +5,11 @@ data
 __pycache__
 tests
 *.zip
+
+# Portable backups and restored credentials stay out of source/build contexts.
+*.ecybak
+restored-data/
+**/master.key
+*.db
+*.db-wal
+*.db-shm

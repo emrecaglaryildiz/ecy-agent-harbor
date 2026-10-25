@@ -92,3 +92,17 @@ Ayarlar tek menüde: Ajanlar & API, İnternet erişimi, Hesaplar & yetkiler, Bil
 **Projects & files → Search file contents**: Local, case-insensitive literal search across the selected project's text, logs and extracted PDF text. Open matching source lines or attach a file to the task. Images are excluded; no model call is made. Results are paginated, with one result per matching line. Search is a direct scan, not a semantic index.
 
 ![Local evidence search / Dosyalarda arama](docs/preview-search.png)
+
+## Investigation platform / İnceleme platformu
+
+Task conversations · Report comparison · Audited findings/actions · Live activity · Project knowledge bank · Declared agent capabilities · Encrypted portable backup/restore · Scoped idempotent webhooks.
+
+Görev sohbeti · Rapor karşılaştırma · Geçmişli bulgu/aksiyon takibi · Canlı akış · Proje bilgi bankası · Ajan yetenekleri · Şifreli taşınabilir yedek/geri yükleme · Yetkili ve tekrar korumalı webhook bağlantıları.
+
+[Platform guide / Platform kılavuzu](docs/PLATFORM.md) · [Eight-phase plan / Sekiz faz planı](docs/ROADMAP-PLATFORM.md)
+
+![Report comparison / Rapor karşılaştırma](docs/preview-comparison.png)
+
+![Findings and actions / Bulgular ve aksiyonlar](docs/preview-findings.png)
+
+![Knowledge bank / Bilgi bankası](docs/preview-knowledge.png)

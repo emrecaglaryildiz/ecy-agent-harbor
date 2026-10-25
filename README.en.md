@@ -158,3 +158,7 @@ A notice only in source comments or a license file does not satisfy the added vi
 ### Search uploaded evidence
 
 Open **Projects & files → Search file contents**. Search the selected project's text/log files and extracted PDF text with a literal, case-insensitive query (1–200 characters). Results show file names, source line numbers and highlighted snippets. Use **Open line** to inspect the original, or **Add to task** to select the whole file for analysis. This does not launch a task. Viewers may search/read but cannot attach files to tasks. Results are paginated in groups of 50 matching lines; no model requests are made. Images and OCR are not included. This first version scans stored text directly; large libraries may take longer, and uploading/deleting files between pages can shift page boundaries.
+
+## Investigation platform
+
+All eight platform phases are available: task conversations, report comparison, findings/actions, live activity, a project knowledge bank, declared agent capabilities, encrypted backup/restore and scoped incoming webhooks. Open the new sidebar sections or **Management → Backup / Webhook connections**. See [the platform guide](docs/PLATFORM.md) for workflows, costs, restore instructions and operational limitations.

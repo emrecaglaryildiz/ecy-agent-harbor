@@ -236,3 +236,7 @@ Tema düğmesinin yanındaki **TR / EN** düğmesiyle dili değiştirebilirsin. 
 ### Yüklenen dosyalarda arama
 
 **Projeler & dosyalar → Dosya içeriğinde ara** seçili projenin metin/log dosyaları ve çıkarılmış PDF metni içinde büyük/küçük harf duyarsız düz metin arar (1–200 karakter). Sonuçlarda dosya adı, satır numarası ve vurgulanmış eşleşme görünür. **Satırı aç** özgün kaynağı açar; **Göreve ekle** dosyanın tamamını analiz için seçer, kendiliğinden görev başlatmaz. Gözlemci arayıp okuyabilir; göreve dosya ekleyemez. Her sayfada 50 eşleşen satır gösterilir. Arama sağlayıcı çağrısı yapmaz; görsel/OCR araması yoktur. İlk sürüm kayıtlı metni doğrudan tarar; büyük kütüphaneler daha uzun sürebilir. Sayfalar arasında dosya eklenmesi/silinmesi sayfa sınırlarını değiştirebilir.
+
+## İnceleme platformu
+
+Sekiz faz eklendi: görev sohbeti, rapor karşılaştırma, bulgu/aksiyon takibi, canlı akış, proje bilgi bankası, ajan yetenekleri, şifreli yedekleme/geri yükleme ve yetkili gelen webhook bağlantıları. Yeni bölümlere sol menüden; yedek ve webhook ayarlarına **Yönetim** menüsünden ulaşılır. İş akışları, kullanım maliyeti ve geri yükleme için [platform kılavuzuna](docs/PLATFORM.md) bak.
