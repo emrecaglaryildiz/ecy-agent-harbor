@@ -11,5 +11,5 @@ COPY --chown=harbor:harbor static ./static
 COPY --chown=harbor:harbor run.py ./run.py
 USER harbor
 EXPOSE 8080
-HEALTHCHECK --interval=20s --timeout=3s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=2)"
+HEALTHCHECK --interval=20s --timeout=3s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health/ready', timeout=2)"
 CMD ["python", "-m", "app.server"]

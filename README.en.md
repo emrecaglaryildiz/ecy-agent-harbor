@@ -198,3 +198,7 @@ Isolated mock workspace with fictional data and example ratings; no real hardwar
 ![Incident desk / Olay masası](docs/preview-incidentdesk.png)
 
 ![Operations / Operasyon](docs/preview-operations.png)
+
+## Kurumsal gelişim / Enterprise development
+
+[Kurumsal fazlar ve işletim kontrolleri / Enterprise phases and operational probes](docs/ENTERPRISE-ROADMAP.md). İlk teslim: canlılık/hazır olma uçları; proje izolasyonu, SSO ve çok sunuculu çalışma henüz plan aşamasındadır. / Initial delivery: liveness/readiness probes; project isolation, SSO and multi-server operation remain planned.
