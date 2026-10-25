@@ -1,8 +1,15 @@
 """Disposable, resource-limited PDF parser. No server configuration or credentials."""
-import io
-import json
 import os
 import sys
+
+# Executing this file directly adds app/ to sys.path. In particular app/platform.py
+# must never shadow Python's platform module inside PDF dependencies. Keep installed
+# package locations (including supported user-site installs), but remove local code.
+_worker_folder=os.path.dirname(os.path.realpath(__file__))
+sys.path[:]=[entry for entry in sys.path if entry and os.path.realpath(entry)!=_worker_folder]
+
+import io
+import json
 
 
 def limits():
