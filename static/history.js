@@ -2,7 +2,7 @@ const historySelected=new Set();
 let pendingDelete=null;
 
 function canDeleteTask(task){
- return !!state&&state.user.role!=='viewer'&&['completed','failed','cancelled','incomplete'].includes(task.status)&&
+ return !!state&&state.user.role!=='viewer'&&(typeof projectWritable!=='function'||projectWritable(task.project_id||''))&&['completed','failed','cancelled','incomplete'].includes(task.status)&&
   !task.reserved&&(state.user.role==='admin'||task.owner_id===state.user.id);
 }
 
