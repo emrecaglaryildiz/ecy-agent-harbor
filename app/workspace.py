@@ -83,7 +83,7 @@ def attach(db, tid, options):
 def clean_config(config, server):
     if not isinstance(config, dict):
         raise ValueError('Görev ayarları geçersiz')
-    result = {k: config[k] for k in ('prompt', 'mode', 'agents', 'judge', 'fallback_agent', 'web_enabled', 'review_enabled', 'tool_requested', 'project_id', 'file_ids', 'knowledge_ids', 'language') if k in config}
+    result = {k: config[k] for k in ('prompt', 'mode', 'agents', 'judge', 'fallback_agent', 'web_enabled', 'review_enabled', 'tool_requested', 'project_id', 'file_ids', 'knowledge_ids', 'mcp_servers', 'language', 'mask_sensitive', 'allow_unmasked_images') if k in config}
     if result.get('language', 'tr') not in ('tr', 'en'):
         raise ValueError('Dil tr veya en olmalı')
     prompt = result.get('prompt', '')
@@ -172,6 +172,8 @@ def handle_post(handler, user, path, body, server):
                 raise ValueError('Projenin dosyalarını ve görev geçmişini önce temizle')
             if any(json.loads(r[0]).get('project_id') == row['id'] for r in db.execute('SELECT config FROM schedules UNION ALL SELECT config FROM templates')):
                 raise ValueError('Proje bir şablonda veya zamanlamada kullanılıyor')
+            if db.execute('SELECT 1 FROM playbooks WHERE project_id=? UNION ALL SELECT 1 FROM playbook_runs WHERE project_id=?',(row['id'],row['id'])).fetchone():raise ValueError('Proje reçetelerde kullanılıyor; önce reçeteleri ve çalışmalarını temizle')
+            if db.execute('SELECT 1 FROM lab_trials WHERE project_id=?',(row['id'],)).fetchone():raise ValueError('Proje model laboratuvarında kullanılıyor')
             db.execute('DELETE FROM projects WHERE id=?', (row['id'],))
         elif path == '/api/files':
             ident = files.upload(server, user, body)

@@ -84,11 +84,14 @@ def restore(content,password,destination):
             os.chmod(path,0o600)
         with sqlite3.connect(staging/'harbor.db') as db:
             if db.execute('PRAGMA integrity_check').fetchone()[0]!='ok':raise ValueError('Veritabanı doğrulanamadı')
-            for table in ('schedules','webhooks'):
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='context_previews'").fetchone():db.execute("DELETE FROM context_previews")
+            for table in ('schedules','webhooks','mcp_servers','nodes'):
                 if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone():db.execute('UPDATE '+table+' SET enabled=0')
             db.execute("UPDATE tasks SET status='incomplete',error='Yedekten geri yüklendi; otomatik başlatılmadı' WHERE status IN ('queued','running','awaiting_approval')")
             db.execute("UPDATE runs SET status='incomplete' WHERE status IN ('queued','running')")
             db.execute("UPDATE approvals SET status='rejected' WHERE status='pending'")
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='mcp_calls'").fetchone():db.execute("UPDATE mcp_calls SET status='rejected' WHERE status IN ('pending','approved','running','dispatched')")
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='playbook_runs'").fetchone():db.execute("UPDATE playbook_runs SET control='paused' WHERE control='ready'")
             db.execute("UPDATE notifications SET status='unknown' WHERE status IN ('pending','sending')")
             row=db.execute("SELECT config FROM integrations WHERE id='telegram'").fetchone()
             if row:

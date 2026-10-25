@@ -41,16 +41,8 @@ def upload(server, user, body):
         if not valid:
             raise ValueError('Görsel biçimi ile dosya içeriği uyuşmuyor')
     elif extension == '.pdf':
-        from pypdf import PdfReader
-        try:
-            reader = PdfReader(io.BytesIO(raw))
-            if reader.is_encrypted:
-                raise ValueError()
-            text = '\n'.join(f'[Sayfa {i + 1}]\n{page.extract_text() or ""}' for i, page in enumerate(reader.pages))
-        except Exception:
-            raise ValueError('PDF okunamadı; şifresiz, metin içeren PDF kullan') from None
-        if not text.replace('[Sayfa 1]', '').strip():
-            raise ValueError('PDF metin içermiyor; taranmış sayfaları görsel olarak yükle')
+        from .pdf_service import extract
+        text=extract(raw)
         mime = 'application/pdf'
     else:
         try:

@@ -12,7 +12,7 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from .time_utils import APP_TIMEZONE, local_day, day_window
-from . import platform
+from . import platform, security, mcp_registry, mfa, playbooks, incidents, privacy, lab, operations
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -125,6 +125,13 @@ def initialize():
                 db.execute("ALTER TABLE tasks ADD COLUMN " + column)
         workspace.initialize(db)
         platform.initialize(db)
+        mcp_registry.initialize(db)
+        mfa.initialize(db)
+        playbooks.initialize(db)
+        incidents.initialize(db)
+        privacy.initialize(db)
+        lab.initialize(db)
+        operations.initialize(db)
         db.execute("CREATE TRIGGER IF NOT EXISTS run_finished AFTER UPDATE OF status ON runs WHEN NEW.status IN ('completed','failed','incomplete','cancelled') AND NEW.finished_at IS NULL BEGIN UPDATE runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%f+00:00','now') WHERE id=NEW.id; END")
         # Legacy calls used a fixed 1,500-token cap and did not record finish_reason.
         db.execute("UPDATE runs SET status='incomplete',finish_reason='legacy_length_suspected',output_limit=1500 WHERE status='completed' AND finish_reason IS NULL AND output_tokens>=1500")
@@ -165,11 +172,24 @@ def password_record(password):
     if not isinstance(password, str) or len(password) < 12 or len(password) > 256:
         raise ValueError("Parola 12–256 karakter olmalı")
     salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 600000).hex()
+    if not security.KDF_SLOTS.acquire(blocking=False):raise ValueError("Parola işleyici meşgul; tekrar dene")
+    try:digest = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), 600000).hex()
+    finally:security.KDF_SLOTS.release()
     return salt, digest
 
 
 def set_password(uid, password, first_setup=False):
+    if first_setup:
+        with security.LOCK:
+            if not requires_setup():
+                raise ValueError("İlk kurulum zaten tamamlanmış")
+            _store_password(uid, password, first_setup=True)
+            (Path(DB_PATH).parent / 'bootstrap.token').unlink(missing_ok=True)
+        return
+    _store_password(uid, password)
+
+
+def _store_password(uid, password, first_setup=False):
     salt, digest = password_record(password)
     with connect() as db:
         db.execute("BEGIN IMMEDIATE")
@@ -192,7 +212,9 @@ def check_login(uid, password):
         row = db.execute("SELECT salt,password_hash FROM credentials WHERE user_id=?", (uid,)).fetchone()
     if not row:
         return False
-    value = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(row[0]), 600000).hex()
+    if not security.KDF_SLOTS.acquire(blocking=False):return False
+    try:value = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(row[0]), 600000).hex()
+    finally:security.KDF_SLOTS.release()
     return hmac.compare_digest(value, row[1])
 
 
@@ -317,6 +339,8 @@ def delete_history(user, body):
                 if row["status"] not in ("completed", "failed", "cancelled", "incomplete") or row["reserved"] or running:
                     raise ValueError("Çalışan, kuyruktaki veya onay bekleyen görev silinemez")
         for row in rows:
+            playbooks.capture(sys.modules[__name__],db,row["id"])
+            lab.capture(sys.modules[__name__],db,row["id"])
             # Keep only anonymous accounting so clearing history cannot reset spending limits.
             db.execute("INSERT INTO deleted_costs(id,day,amount,day_timezone) VALUES(?,?,?,?)", (uuid.uuid4().hex, local_day(row["created_at"]), row["cost"], APP_TIMEZONE))
             (Path(DB_PATH).parent / "artifacts" / (row["id"] + ".txt")).unlink(missing_ok=True)
@@ -366,6 +390,9 @@ def task_dict(row):
     task.pop("continuation_context", None)
     task.pop("resume_state", None)
     task.pop("retry_state", None)
+    task.pop("privacy_seed", None)
+    task["mask_sensitive"]=bool(task.get("mask_sensitive"))
+    task["allow_unmasked_images"]=bool(task.get("allow_unmasked_images"))
     return task
 
 
@@ -448,6 +475,8 @@ def _create_task(user, body, continuation_context="", resume_state="", retry_sta
         if not existing:
             db.execute("BEGIN IMMEDIATE")
         options = workspace.task_options(db, user, body, sys.modules[__name__])
+        if body.get("mask_sensitive") is True and body.get("allow_unmasked_images") is not True and any(db.execute("SELECT kind FROM files WHERE id=?",(fid,)).fetchone()[0]=="image" for fid in options[1]):raise ValueError("Görsel metni maskelenemez; görselleri çıkar veya maskelenmeden gönderilmesini açıkça onayla")
+        privacy_seed=privacy.verify(sys.modules[__name__],db,user,body)
         count = db.execute("SELECT count(*) FROM tasks WHERE status IN ('queued','running','awaiting_approval')").fetchone()[0]
         if count >= MAX_QUEUE:
             raise ValueError("Görev kuyruğu dolu")
@@ -455,6 +484,11 @@ def _create_task(user, body, continuation_context="", resume_state="", retry_sta
                    (tid, prompt.strip()[:70], prompt.strip(), mode, json.dumps(ids), judge, "queued", user["id"], now(), now(), budget, reserve, int(bool(body.get("tool_requested", False))), continuation_context, int(web_enabled), resume_state))
         db.execute("UPDATE tasks SET fallback_agent=?,retry_state=? WHERE id=?", (fallback, retry_state, tid))
         workspace.attach(db, tid, options)
+        db.execute("UPDATE tasks SET mask_sensitive=?,allow_unmasked_images=?,privacy_seed=? WHERE id=?",(int(body.get("mask_sensitive") is True),int(body.get("allow_unmasked_images") is True),privacy_seed,tid))
+        chosen_mcp=mcp_registry.selection(sys.modules[__name__],db,user,body)
+        if chosen_mcp and any(BY_ID[x]["provider"]!="openai-compatible" or BY_ID[x].get("capabilities",{}).get("tools") is False for x in ids+([fallback] if fallback else [])):
+            raise ValueError("MCP görevleri araç çağrısı destekleyen OpenAI uyumlu ajan gerektirir")
+        db.execute("UPDATE tasks SET mcp_selection=? WHERE id=?",(json.dumps(chosen_mcp),tid))
         knowledge = platform.knowledge_context(db, options[0], body.get("knowledge_ids", []))
         if knowledge:
             db.execute("UPDATE tasks SET continuation_context=? WHERE id=?", ((continuation_context+"\n\n"+knowledge).strip(), tid))
@@ -518,14 +552,20 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
     reservation = call_reserve(BY_ID[aid], prompt, len(json.loads(task[1])) if kind == "judge" else 0)
     web = None
     provider_started = False
+    circuit=None
     try:
         agent = dict(BY_ID[aid])
+        circuit=operations.admit(sys.modules[__name__],agent)
         with connect() as context_db:
+            private=context_db.execute("SELECT mask_sensitive,privacy_seed FROM tasks WHERE id=?",(tid,)).fetchone()
+            if private and private[0]:agent["_privacy_seed"]=private[1]
             project = context_db.execute("SELECT p.instruction FROM projects p JOIN tasks t ON t.project_id=p.id WHERE t.id=?", (tid,)).fetchone()
             if project:
                 agent['instruction'] += '\nProje talimatı:\n' + project[0]
             if kind == 'participant':
                 agent['_images'] = [files.image_part(sys.modules[__name__], row) for row in context_db.execute("SELECT f.* FROM files f JOIN task_files t ON t.file_id=f.id WHERE t.task_id=? AND f.kind='image'", (tid,))]
+        if agent.get("_privacy_seed"):
+            prompt=privacy.redact(prompt,agent["_privacy_seed"]);context=privacy.redact(context,agent["_privacy_seed"]);agent["instruction"]=privacy.redact(agent["instruction"],agent["_privacy_seed"])
         agent["_continuation"] = continuation
         if resume_state:
             saved = json.loads(resume_state)
@@ -565,6 +605,11 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
                     delta_db.execute("UPDATE runs SET output=? WHERE id=?", ("".join(partial), rid))
                 last_flush[0] = time.monotonic()
         agent["_on_delta"] = save_delta
+        with connect() as tool_db:
+            task_row=dict(tool_db.execute('SELECT * FROM tasks WHERE id=?',(tid,)).fetchone())
+        if json.loads(task_row.get('mcp_selection','[]')) and kind=='participant':
+            web=mcp_registry.Router(sys.modules[__name__],task_row,web)
+            agent['_web']=web
         provider_started = True
         for attempt in range(1, 3):
             if cancelled():
@@ -584,6 +629,7 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
                     log(retry_db, tid, "provider_retry", "Geçici bağlantı hatası; çıktı alınmadan bir kez yeniden deneniyor")
                 if STOP.wait(1):
                     raise RuntimeError("Sunucu durduruluyor")
+        operations.success(sys.modules[__name__],circuit)
         finish_reason = result.finish_reason
         if not result.text.strip() and finish_reason in ("stop", "end_turn", "eos", "stop_sequence", "unknown", "completed"):
             finish_reason = "empty_response"
@@ -599,7 +645,9 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
             db.execute("UPDATE tasks SET cost=cost+?,reserved=max(0,reserved-?),updated_at=? WHERE id=?", (cost, reservation, now(), tid))
             log(db, tid, "agent_" + run_status, f"{BY_ID[aid]['name']} · " + ("Yanıt tamamlanmadı" if run_status == "incomplete" else "Tamamlandı"))
         return result.text
-    except Exception:
+    except Exception as exc:
+        if provider_started and operations.transient(exc):operations.failure(sys.modules[__name__],circuit)
+        elif provider_started:operations.success(sys.modules[__name__],circuit)
         if "partial" in locals() and partial:
             with connect() as partial_db:
                 partial_db.execute("UPDATE runs SET output=? WHERE id=?", ("".join(partial), rid))
@@ -609,11 +657,12 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
             if possible_cost:
                 db.execute('UPDATE runs SET cost_estimated=1 WHERE id=?', (rid,))
                 db.execute('UPDATE tasks SET cost_estimated=1 WHERE id=?', (tid,))
-            db.execute("UPDATE runs SET status='failed',cost=?,error=? WHERE id=?", (possible_cost, "Sağlayıcı yanıtı alınamadı; sunucu yapılandırmasını kontrol edin", rid))
+            db.execute("UPDATE runs SET status='failed',cost=?,error=? WHERE id=?", (possible_cost, "Sağlayıcı geçici dinlenmede; Operasyon ekranını kontrol et" if isinstance(exc,operations.CircuitOpen) else "Sağlayıcı yanıtı alınamadı; sunucu yapılandırmasını kontrol edin", rid))
             db.execute("UPDATE tasks SET cost=cost+?,reserved=max(0,reserved-?),updated_at=? WHERE id=?", (possible_cost, reservation, now(), tid))
             log(db, tid, "agent_failed", f"{BY_ID[aid]['name']} sağlayıcı çağrısı başarısız")
         return None
     finally:
+        operations.release(sys.modules[__name__],circuit)
         if web:
             web.close()
 
@@ -726,6 +775,22 @@ def decide(user, aid, decision):
 class Handler(BaseHTTPRequestHandler):
     server_version = "AgentHarbor/0.1"
 
+    def setup(self):
+        super().setup()
+        self.connection.settimeout(float(os.getenv('HTTP_READ_TIMEOUT', '15')))
+        self._header_timer = threading.Timer(float(os.getenv('HTTP_HEADER_DEADLINE','15')), self._abort_headers)
+        self._header_timer.daemon=True; self._header_timer.start()
+
+    def _abort_headers(self):
+        self._headers_expired=True
+        try:self.connection.shutdown(0)
+        except OSError:pass
+
+    def finish(self):
+        if hasattr(self,'_header_timer'):self._header_timer.cancel()
+        try:super().finish()
+        except (OSError,TimeoutError):pass
+
     def log_message(self, fmt, *args):
         # Do not record request paths or bodies containing user input.
         pass
@@ -747,8 +812,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        self.send_header("Referrer-Policy", "same-origin")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https: http:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        if security.public_mode():self.send_header("Strict-Transport-Security", "max-age=31536000")
+        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
 
     def user(self):
         cookie = self.headers.get("Cookie", "")
@@ -765,14 +833,31 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         try:
+            self._header_timer.cancel()
+            if getattr(self,'_headers_expired',False):raise ValueError('HTTP başlık süresi doldu')
             path = urlparse(self.path).path
+            if not (path=='/api/health' and security.loopback(self.client_address[0])):security.allowed_host(self)
             if path == "/api/health":
                 return self.respond(200, {"ok": True, "mode": MODE})
+            security.rate_limit(('get',self.client_address[0]),limit=600)
             if path == "/api/auth/status":
                 return self.respond(200, {"mode": MODE, "setup_required": requires_setup()})
             if path.startswith("/api/"):
                 user, session = self.user()
                 with connect() as db:
+                    if path == '/api/security/posture':
+                        if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
+                        return self.respond(200,security.posture(sys.modules[__name__]) | {'mfa':mfa.statuses(db)})
+                    if mcp_registry.handle_get(self,user,path,db,sys.modules[__name__]):
+                        return
+                    if operations.handle_get(self,user,path,db,sys.modules[__name__]):
+                        return
+                    if lab.handle_get(self,user,path,db,sys.modules[__name__]):
+                        return
+                    if incidents.handle_get(self,user,path,db,sys.modules[__name__]):
+                        return
+                    if playbooks.handle_get(self,user,path,db,sys.modules[__name__]):
+                        return
                     if platform.handle_get(self, user, path, db, sys.modules[__name__]):
                         return
                     if workspace.handle_get(self, user, path, db, sys.modules[__name__]):
@@ -833,7 +918,7 @@ class Handler(BaseHTTPRequestHandler):
                 static[path] = ('brand.svg', 'image/svg+xml')
             if path == '/locales/en.json':
                 static[path] = ('locales/en.json', 'application/json; charset=utf-8')
-            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js'):
+            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js', '/mcp.js', '/playbooks.js', '/incidents.js', '/privacy.js', '/lab.js', '/operations.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
                 return self.respond(404, {"error": "Bulunamadı"})
@@ -853,20 +938,40 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            self._header_timer.cancel()
+            if getattr(self,'_headers_expired',False):raise ValueError('HTTP başlık süresi doldu')
+            security.allowed_host(self)
             path = urlparse(self.path).path
             # Origin check also protects login/logout against cross-site requests.
             origin = self.headers.get("Origin")
-            expected = os.getenv("PUBLIC_ORIGIN", "http://" + self.headers.get("Host", "localhost"))
+            expected = os.getenv("PUBLIC_ORIGIN", "http://" + self.headers.get("Host", "localhost")).rstrip("/")
             if origin and origin != expected:
                 raise PermissionError("Bu origin kabul edilmiyor")
             if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
                 raise ValueError("JSON içerik gerekli")
-            length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > (files.MAX_FILE_BYTES * 4 // 3 + 8192 if path == '/api/files' else MAX_REQUEST_BYTES):
-                raise ValueError("İstek boyutu geçersiz")
-            body = json.loads(self.rfile.read(length))
+            self.close_connection=True
+            security.rate_limit(('http',self.client_address[0]), limit=int(os.getenv('HTTP_RATE_PER_MINUTE','240')))
+            if path in ('/api/setup','/api/login'):
+                security.rate_limit((path,self.client_address[0]),limit=10,window=300)
+                if path=='/api/setup' and (security.public_mode() or not requires_setup()):
+                    raise PermissionError('İlk kurulum kapalı; yerel kurulumunu tamamla')
+                maximum=8192
+            elif path.startswith('/api/node-heartbeats/'):
+                operations.authenticate(sys.modules[__name__],path.rsplit('/',1)[-1],self.headers.get('Authorization',''))
+                maximum=8192
+            elif path.startswith('/api/hooks/'):
+                token=self.headers.get('Authorization','')
+                if not token.startswith('Bearer ') or len(token)>512:
+                    raise PermissionError('Webhook yetkisi geçersiz')
+                maximum=MAX_REQUEST_BYTES
+            else:
+                self.user()  # Reject anonymous/CSRF-invalid uploads before reading their body.
+                maximum=files.MAX_FILE_BYTES*4//3+8192 if path=='/api/files' else MAX_REQUEST_BYTES
+            body=security.read_json_body(self,maximum)
             if not isinstance(body, dict):
                 raise ValueError("JSON nesnesi gerekli")
+            if path.startswith("/api/node-heartbeats/"):
+                return self.respond(200,operations.heartbeat(sys.modules[__name__],path.rsplit("/",1)[-1],self.headers.get("Authorization",""),body))
             if path.startswith("/api/hooks/"):
                 token = self.headers.get("Authorization", "")
                 if not token.startswith("Bearer "):
@@ -874,8 +979,7 @@ class Handler(BaseHTTPRequestHandler):
                 result = platform.receive_webhook(sys.modules[__name__], path.rsplit("/",1)[-1], token[7:], self.headers.get("Idempotency-Key", ""), body)
                 return self.respond(200 if result["replayed"] else 201, result)
             if path == "/api/setup":
-                if urlparse("http://" + self.headers.get("Host", "")).hostname not in ("localhost", "127.0.0.1", "::1"):
-                    raise PermissionError("İlk kurulumu bu bilgisayarda localhost adresinden tamamla")
+                security.authorize_bootstrap(sys.modules[__name__],body)
                 set_password("admin", body.get("password"), first_setup=True)
                 return self.respond(201, {"ok": True})
             if path == "/api/login":
@@ -893,7 +997,7 @@ class Handler(BaseHTTPRequestHandler):
                         if len(attempts) >= 10 or len(LOGIN_ATTEMPTS) > 1000:
                             raise PermissionError("Çok fazla giriş denemesi; 5 dakika sonra tekrar dene")
                         attempts.append(time.time())
-                    if not check_login(uid, body.get("token", "")):
+                    if not check_login(uid, body.get("token", "")) or not mfa.verify_login(sys.modules[__name__],uid,body.get("code", "")):
                         raise PermissionError("Rol veya parola hatalı")
                     with SESSION_LOCK:
                         LOGIN_ATTEMPTS.pop(attempt_key, None)
@@ -908,6 +1012,20 @@ class Handler(BaseHTTPRequestHandler):
                 secure = "; Secure" if os.getenv("COOKIE_SECURE") == "1" else ""
                 return self.respond(200, {"ok": True}, "harbor=" + sid + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800" + secure)
             user, session = self.user()
+            if mfa.handle_post(self,user,path,body,sys.modules[__name__]):
+                return
+            if mcp_registry.handle_post(self,user,path,body,sys.modules[__name__]):
+                return
+            if operations.handle_post(self,user,path,body,sys.modules[__name__]):
+                return
+            if lab.handle_post(self,user,path,body,sys.modules[__name__]):
+                return
+            if privacy.handle_post(self,user,path,body,sys.modules[__name__]):
+                return
+            if incidents.handle_post(self,user,path,body,sys.modules[__name__]):
+                return
+            if playbooks.handle_post(self,user,path,body,sys.modules[__name__]):
+                return
             if platform.handle_post(self, user, path, body, sys.modules[__name__]):
                 return
             if workspace.handle_post(self, user, path, body, sys.modules[__name__]):
@@ -935,6 +1053,9 @@ class Handler(BaseHTTPRequestHandler):
                 uid = body.get("user")
                 if uid not in ("admin", "operator", "viewer"):
                     raise ValueError("Geçersiz rol")
+                if security.public_mode():
+                    with connect() as auth_db:
+                        if not mfa.statuses(auth_db).get(uid,False):raise ValueError('Önce hedef hesap için iki adımlı doğrulama kur')
                 set_password(uid, body.get("password"))
                 return self.respond(200, {"ok": True, "reauthenticate": uid == user["id"]})
             if path == "/api/logout":
@@ -956,6 +1077,8 @@ class Handler(BaseHTTPRequestHandler):
                     request_state = run["request_state"]
                     file_ids = [r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?', (tid,))]
                     next_body = {"prompt": task["prompt"], "agents": [run["agent_id"]], "mode": "single", "web_enabled": bool(task["web_enabled"]), "project_id": task["project_id"], "file_ids": file_ids, "language": body.get("language", task["language"])}
+                next_body.update(mask_sensitive=bool(task["mask_sensitive"]),allow_unmasked_images=bool(task["allow_unmasked_images"]))
+                next_body["mcp_servers"] = [s["id"] for s in json.loads(task["mcp_selection"])]
                 next_id = create_task(user, next_body, retry_state=request_state)
                 return self.respond(201, {"id": next_id})
             if path.startswith("/api/tasks/") and path.endswith("/continue"):
@@ -968,6 +1091,8 @@ class Handler(BaseHTTPRequestHandler):
                     previous = (task["continuation_context"] + "\n\n" if task["continuation_context"] else "") + (run["output"] or "")
                     saved_state = run["provider_state"] if not (run["output"] or "").strip() else ""
                     next_task = {"prompt": task["prompt"], "mode": "single", "agents": [run["agent_id"]], "web_enabled": bool(task["web_enabled"]) and not bool(saved_state), "project_id": task["project_id"], "file_ids": [r[0] for r in db.execute("SELECT file_id FROM task_files WHERE task_id=?", (tid,))], "language": body.get("language", task["language"])}
+                next_task.update(mask_sensitive=bool(task["mask_sensitive"]),allow_unmasked_images=bool(task["allow_unmasked_images"]))
+                next_task["mcp_servers"] = [] if saved_state else [s["id"] for s in json.loads(task["mcp_selection"])]
                 return self.respond(201, {"id": create_task(user, next_task, continuation_context=previous if not saved_state else "", resume_state=saved_state)})
             if path.startswith("/api/approvals/"):
                 decide(user, path.split("/")[-1], body.get("decision"))
@@ -1006,11 +1131,16 @@ def main():
     host, port = os.getenv("HOST", "127.0.0.1"), int(os.getenv("PORT", "8080"))
     # Bind before recovery: a second launch must never alter an active server's tasks.
     try:
-        httpd = ThreadingHTTPServer((host, port), Handler)
+        httpd = security.BoundedHTTPServer((host, port), Handler)
     except OSError:
         raise SystemExit(f"{port} portu kullanılıyor. ECY Agent Harbor zaten açıksa http://localhost:{port} adresini aç.")
     os.umask(0o077)
     initialize()
+    try:security.validate_public(sys.modules[__name__])
+    except ValueError as exc:
+        httpd.server_close();raise SystemExit(str(exc))
+    if requires_setup():
+        print('Yerel tek kullanımlık kurulum kodu / Local bootstrap code: '+security.bootstrap_token(sys.modules[__name__]),flush=True)
     threading.Thread(target=automation.loop, args=(sys.modules[__name__],), daemon=True).start()
     for _ in range(WORKERS):
         threading.Thread(target=worker, daemon=True).start()

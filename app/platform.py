@@ -74,7 +74,8 @@ def followup(server, user, tid, body):
             raise ValueError('Önceki görev bitmiş olmalı')
         server.workspace.writable(user, old['owner_id'])
         cfg = server.task_dict(old)
-        cfg.update(prompt=body.get('prompt', ''), language=body.get('language', old['language']))
+        cfg.pop('context_preview_id',None)
+        cfg.update(prompt=body.get('prompt', ''), language=body.get('language', old['language']),mcp_servers=[s['id'] for s in json.loads(old['mcp_selection'])])
         original = [r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?', (tid,))]
         added = body.get('file_ids', [])
         if not isinstance(added, list) or any(not isinstance(x, str) for x in added):
