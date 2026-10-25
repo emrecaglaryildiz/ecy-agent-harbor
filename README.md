@@ -84,3 +84,11 @@ Saat dilimi / Time zone: **Europe/Istanbul (GMT+03:00)**. Görevler, loglar, rap
 Ayarlar tek menüde: Ajanlar & API, İnternet erişimi, Hesaplar & yetkiler, Bildirimler ve Kullanım. / Settings are grouped under one Management menu: Agents & API, Internet access, Accounts & permissions, Notifications, and Usage.
 
 ![Yönetim / Management](docs/preview-management.png)
+
+### Dosyalarda arama / Evidence search
+
+**Projeler & dosyalar → Dosya içeriğinde ara**: Seçili projenin loglarında, metinlerinde ve çıkarılmış PDF metninde büyük/küçük harf duyarsız, düz metin araması. Eşleşmeler satır numarasıyla açılır; dosya göreve eklenebilir. Arama yereldir ve model çağrısı yapmaz. Görseller aranmaz.
+
+**Projects & files → Search file contents**: Local, case-insensitive literal search across the selected project's text, logs and extracted PDF text. Open matching source lines or attach a file to the task. Images are excluded; no model call is made. Results are paginated, with one result per matching line. Search is a direct scan, not a semantic index.
+
+![Local evidence search / Dosyalarda arama](docs/preview-search.png)

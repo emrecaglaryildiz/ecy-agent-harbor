@@ -232,3 +232,7 @@ Yalnızca kaynak kod yorumlarında veya LICENSE dosyasında adın bulunması bu 
 ## Arayüz dili
 
 Tema düğmesinin yanındaki **TR / EN** düğmesiyle dili değiştirebilirsin. İlk açılışta tarayıcı dili Türkçeyse Türkçe, diğer dillerde İngilizce seçilir. Elle yaptığın seçim bu tarayıcıda saklanır ve sonraki açılışlarda önceliklidir. Oturum açmadan da dili değiştirebilirsin. Promptlar, proje/ajan adları, kaynak dosyalar ve model çıktıları otomatik çevrilmez. PDF/Markdown başlıkları seçilen dile göre üretilir. Sol üstteki marka alanı her iki dilde de **ECY Agent Harbor** adını ve liman simgeli logoyu gösterir.
+
+### Yüklenen dosyalarda arama
+
+**Projeler & dosyalar → Dosya içeriğinde ara** seçili projenin metin/log dosyaları ve çıkarılmış PDF metni içinde büyük/küçük harf duyarsız düz metin arar (1–200 karakter). Sonuçlarda dosya adı, satır numarası ve vurgulanmış eşleşme görünür. **Satırı aç** özgün kaynağı açar; **Göreve ekle** dosyanın tamamını analiz için seçer, kendiliğinden görev başlatmaz. Gözlemci arayıp okuyabilir; göreve dosya ekleyemez. Her sayfada 50 eşleşen satır gösterilir. Arama sağlayıcı çağrısı yapmaz; görsel/OCR araması yoktur. İlk sürüm kayıtlı metni doğrudan tarar; büyük kütüphaneler daha uzun sürebilir. Sayfalar arasında dosya eklenmesi/silinmesi sayfa sınırlarını değiştirebilir.

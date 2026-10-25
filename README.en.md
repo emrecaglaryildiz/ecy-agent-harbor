@@ -154,3 +154,7 @@ Under [ECY Attribution License 1.0](LICENSE), retain this visible credit in READ
 > ECY Agent Harbor — Emre Çağlar YILDIZ
 
 A notice only in source comments or a license file does not satisfy the added visible-attribution condition. Third-party components keep their own licenses. Earlier commits contain the standard MIT text; the current custom-license change is recorded in this version's license file.
+
+### Search uploaded evidence
+
+Open **Projects & files → Search file contents**. Search the selected project's text/log files and extracted PDF text with a literal, case-insensitive query (1–200 characters). Results show file names, source line numbers and highlighted snippets. Use **Open line** to inspect the original, or **Add to task** to select the whole file for analysis. This does not launch a task. Viewers may search/read but cannot attach files to tasks. Results are paginated in groups of 50 matching lines; no model requests are made. Images and OCR are not included. This first version scans stored text directly; large libraries may take longer, and uploading/deleting files between pages can shift page boundaries.
