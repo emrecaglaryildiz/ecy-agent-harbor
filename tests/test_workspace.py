@@ -77,6 +77,52 @@ class WorkspaceTests(unittest.TestCase):
         _, general=self.client.request('/api/state?project_id=__general')
         self.assertEqual(len(scoped['tasks']),1); self.assertEqual(general['tasks'],[])
 
+    def test_search_scope_literal_unicode_and_line_numbers(self):
+        from urllib.parse import urlencode
+        pid = self.project()
+        fid = self.upload('normal\rİSTANBUL [error].*\r\n<script>alert(1)</script>\n', project=pid)
+        self.upload('İSTANBUL [error].*', name='general.log')
+        code, data = self.client.request('/api/files/search?' + urlencode({'project_id': pid, 'q': 'istanbul [error].*'}))
+        self.assertEqual(code, 200)
+        self.assertEqual(len(data['results']), 1)
+        hit = data['results'][0]
+        self.assertEqual((hit['file']['id'], hit['line']), (fid, 2))
+        self.assertNotIn('text', hit['file'])
+        self.assertEqual(hit['snippet'][hit['match_start']:hit['match_end']], 'İSTANBUL [error].*')
+        _, view = self.client.request('/api/files/' + fid + '?start=2&count=1')
+        self.assertEqual(view['lines'], [hit['snippet']])
+        _, general = self.client.request('/api/files/search?' + urlencode({'q': 'istanbul'}))
+        self.assertEqual(len(general['results']), 1)
+        self.assertNotEqual(general['results'][0]['file']['id'], fid)
+
+    def test_search_pagination_no_lost_rows_or_duplicates(self):
+        self.upload('\n'.join('hit '+str(i) for i in range(121)))
+        lines = []
+        offset = 0
+        while offset is not None:
+            code, data = self.client.request('/api/files/search?q=hit&limit=50&offset='+str(offset))
+            self.assertEqual(code, 200)
+            lines.extend(r['line'] for r in data['results'])
+            offset = data['next_offset']
+        self.assertEqual(lines, list(range(1, 122)))
+
+    def test_search_long_line_viewer_and_invalid_queries(self):
+        self.upload('a'*100000+'NEEDLE'+'b'*100000)
+        self.client.login('viewer')
+        code, data = self.client.request('/api/files/search?q=needle')
+        self.assertEqual(code, 200)
+        hit = data['results'][0]
+        self.assertEqual(hit['line'], 1)
+        self.assertTrue(hit['prefix_omitted'] and hit['suffix_omitted'])
+        self.assertLess(len(hit['snippet']), 500)
+        self.assertEqual(hit['snippet'][hit['match_start']:hit['match_end']], 'NEEDLE')
+        for query in ('q=', 'q=%0A', 'q=x&limit=101', 'q=x&offset=-1', 'q=x&project_id=missing'):
+            code, _ = self.client.request('/api/files/search?'+query)
+            self.assertEqual(code, 400, query)
+        anonymous = helpers.Client()
+        code, _ = anonymous.request('/api/files/search?q=needle')
+        self.assertEqual(code, 401)
+
     def test_chunks_cover_all_characters_and_giant_lines(self):
         text='İ'*40001+'\nnormal\n'+'X'*17000
         parts=list(files.chunks({'text':text},16000))
