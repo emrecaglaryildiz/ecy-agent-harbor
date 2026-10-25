@@ -145,4 +145,8 @@ Isolated mock workspace with fictional data and example ratings; no real hardwar
 
 ## Kurumsal gelişim / Enterprise development
 
-[Kurumsal fazlar ve işletim kontrolleri / Enterprise phases and operational probes](docs/ENTERPRISE-ROADMAP.md). İlk teslim: canlılık/hazır olma uçları; proje izolasyonu, SSO ve çok sunuculu çalışma henüz plan aşamasındadır. / Initial delivery: liveness/readiness probes; project isolation, SSO and multi-server operation remain planned.
+[Kurumsal fazlar ve işletim kontrolleri / Enterprise phases and operational probes](docs/ENTERPRISE-ROADMAP.md). İlk teslim: canlılık/hazır olma uçları; mevcut hesaplarda proje üyeliği de eklendi; SSO, kullanıcı daveti ve çok sunuculu çalışma planlıdır. / Liveness/readiness and project membership for existing accounts are implemented; SSO, invitations and multi-server operation remain planned.
+
+[Proje üyeliği / Project membership](docs/PROJECT-ACCESS.md): private-by-default projects, read/edit grants and revocation.
+
+![Project membership / Proje üyeliği](docs/preview-project-access.png)
