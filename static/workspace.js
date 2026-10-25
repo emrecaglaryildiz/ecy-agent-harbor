@@ -4,7 +4,7 @@ function workspaceQuery(){return '?project_id='+encodeURIComponent(currentProjec
 function taskPayload(){return {language:uiLanguage(),prompt:$('#prompt').value,mode,agents:[...selected],judge:$('#judge').value||null,tool_requested:$('#tool').checked,web_enabled:internetEnabled,project_id:currentProject||null,file_ids:[...selectedFiles],review_enabled:$('#review-enabled').checked,fallback_agent:$('#fallback-agent').value||null}}
 function editableRecord(record){return state&&state.user.role!=='viewer'&&(state.user.role==='admin'||record.owner_id===state.user.id)}
 function modal(title,html){const d=$('#workspace-dialog');$('#workspace-dialog-title').textContent=title;$('#workspace-dialog-body').innerHTML=html;$('#workspace-dialog-error').textContent='';d.showModal()}
-async function mutateWorkspace(path,body){await api(path,body);workspaceSignature='';await refreshWorkspace(true)}
+async function mutateWorkspace(path,body){await api(path,body);workspaceSignature='';await refreshWorkspace(true);if(path==='files/delete')clearEvidenceSearch()}
 function projectName(id){return workspaceData.projects.find(p=>p.id===id)?.name||'Genel alan'}
 async function refreshWorkspace(force=false){
  if(!state||(!force&&Date.now()-workspaceLoaded<5000))return;
@@ -13,6 +13,7 @@ async function refreshWorkspace(force=false){
  const target=new URLSearchParams(location.search).get('task');if(target&&!window.linkedTaskOpened){window.linkedTaskOpened=true;await openTask(target)}
 }
 function renderWorkspace(){
+ if(evidenceSearchScope!==currentProject)clearEvidenceSearch();
  const writable=state.user.role!=='viewer';
  if(currentProject&&!workspaceData.projects.some(p=>p.id===currentProject)){currentProject='';selectedFiles=[]}
  $('#project-scope').innerHTML='<option value="">Genel alan</option>'+workspaceData.projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');$('#project-scope').value=currentProject;
@@ -74,3 +75,39 @@ document.addEventListener('change',e=>{if(e.target.dataset.attachFile){const id=
 $('#project-scope').onchange=async()=>{currentProject=$('#project-scope').value;selectedFiles=[];workspaceSignature='';await refresh(true);await refreshWorkspace(true)};
 $('#file-upload').onchange=e=>uploadFiles(e.target.files);$('#library-upload').onchange=e=>uploadFiles(e.target.files);
 $('#close-workspace').onclick=()=>$('#workspace-dialog').close();
+
+
+let evidenceSearchScope=null,evidenceSearchSequence=0,evidenceSearchOffset=0,evidenceSearchQuery='';
+function clearEvidenceSearch(){
+ evidenceSearchSequence++;evidenceSearchScope=currentProject;evidenceSearchQuery='';evidenceSearchOffset=0;
+ $('#evidence-query').value='';$('#evidence-search-status').textContent='';$('#evidence-search-results').innerHTML='';$('#evidence-search-pages').innerHTML='';
+}
+async function searchEvidence(offset=0){
+ const query=$('#evidence-query').value.trim(),scope=currentProject,sequence=++evidenceSearchSequence;
+ if(!query){clearEvidenceSearch();return}
+ evidenceSearchScope=scope;evidenceSearchQuery=query;evidenceSearchOffset=offset;
+ $('#evidence-search-status').textContent='Aranıyor…';
+ $('#evidence-search-results').innerHTML='';$('#evidence-search-pages').innerHTML='';
+ try{
+  const data=await api('files/search?'+new URLSearchParams({q:query,project_id:scope||'__general',offset:String(offset)}));
+  if(sequence!==evidenceSearchSequence||scope!==currentProject)return;
+  $('#evidence-search-status').textContent=data.results.length?'Eşleşen satırlar'+': '+(offset+1)+'–'+(offset+data.results.length):'Eşleşme bulunamadı.';
+  $('#evidence-search-results').innerHTML=data.results.map(r=>`<article class="search-result"><div class="heading-row"><b data-i18n-ignore="true">${esc(r.file.name)}</b><span class="badge">L${r.line}</span></div><pre class="search-snippet" data-i18n-ignore="true">${r.prefix_omitted?'…':''}${esc(Array.from(r.snippet).slice(0,r.match_start).join(''))}<mark>${esc(Array.from(r.snippet).slice(r.match_start,r.match_end).join(''))}</mark>${esc(Array.from(r.snippet).slice(r.match_end).join(''))}${r.suffix_omitted?'…':''}</pre><div class="detail-actions"><button class="button secondary" data-file-page="${esc(r.file.id)}" data-start="${r.line}">Satırı aç</button>${state.user.role!=='viewer'?`<button class="button secondary" data-search-attach="${esc(r.file.id)}">${selectedFiles.includes(r.file.id)?'Görevden çıkar':'Göreve ekle'}</button>`:''}</div></article>`).join('');
+  $('#evidence-search-pages').innerHTML=(offset?`<button class="button secondary" data-search-offset="${Math.max(0,offset-50)}">Önceki</button>`:'')+(data.next_offset!==null?`<button class="button secondary" data-search-offset="${data.next_offset}">Sonraki</button>`:'');
+ }catch(error){if(sequence===evidenceSearchSequence)$('#evidence-search-status').textContent=error.message}
+}
+$('#evidence-search-form').onsubmit=event=>{event.preventDefault();searchEvidence(0)};
+$('#clear-evidence-search').onclick=clearEvidenceSearch;
+$('#evidence-query').oninput=()=>{evidenceSearchSequence++;$('#evidence-search-status').textContent='';$('#evidence-search-results').innerHTML='';$('#evidence-search-pages').innerHTML=''};
+document.addEventListener('click',async event=>{
+ const button=event.target.closest('button');if(!button)return;
+ if(button.dataset.searchOffset!==undefined){$('#evidence-query').value=evidenceSearchQuery;await searchEvidence(Number(button.dataset.searchOffset))}
+ if(button.dataset.searchAttach){
+  if(state.user.role==='viewer')return;
+  const id=button.dataset.searchAttach;
+  if(!workspaceData.files.some(f=>f.id===id&&(f.project_id||'')===currentProject))return;
+  if(selectedFiles.includes(id))selectedFiles=selectedFiles.filter(f=>f!==id);
+  else {if(selectedFiles.length>=20){toast('En fazla 20 farklı dosya seçebilirsin');return}selectedFiles.push(id)}
+  renderWorkspace();document.querySelectorAll('[data-search-attach]').forEach(b=>{b.textContent=selectedFiles.includes(b.dataset.searchAttach)?'Görevden çıkar':'Göreve ekle'});
+ }
+});
