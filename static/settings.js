@@ -34,7 +34,7 @@ async function handleLogin(event){
   await api('login',{user:$('#login-user').value,token});
   $('#login-token').value='';$('#setup-confirm').value='';$('#login-error').textContent='';
   $('#login-dialog').close();await refresh(true);
-  if(!state.agents.some(a=>a.configured&&a.enabled))go('settings');
+  if(!state.agents.some(a=>a.configured&&a.enabled))go('settings','providers');
  }catch(error){$('#login-error').textContent=error.message;configureLogin();}
  finally{$('#login-submit').disabled=false;}
 }
@@ -44,6 +44,7 @@ async function loadAgentSettings(){
  $('#settings-admin').classList.toggle('hidden',!admin);
  $('#settings-readonly').classList.toggle('hidden',admin);
  if(!admin)return;
+ updateManagementOverview();
  try{
   const data=await api('agents');agentSettings=data.agents;
   $('#provider-settings-list').innerHTML=agentSettings.map(a=>{
@@ -122,6 +123,7 @@ async function downloadReport(id,format,run=null){
 let internetEnabled=false;
 function updateBrowserStatus(){
  const browser=state?.browser;if(!browser)return;
+ updateManagementOverview();
  const button=$('#install-browser');
  $('#browser-status-text').textContent=browser.installing?(browser.stage||'Kuruluyor…'):browser.error|| (browser.installed?'Playwright MCP hazır · İzole tarayıcı profili':'Kurulum gerekli · Node.js 18+ ve Chrome/Chromium kullanılır');
  button.disabled=browser.installing||browser.installed;
@@ -129,7 +131,7 @@ function updateBrowserStatus(){
  if(!browser.installed&&internetEnabled){internetEnabled=false;$('#internet-toggle').textContent='◎ İnternet kapalı';$('#internet-toggle').setAttribute('aria-pressed','false');}
 }
 $('#internet-toggle').onclick=()=>{
- if(!internetEnabled&&!state?.browser?.installed){go('settings');toast('Önce Playwright MCP kurulumunu tamamla');return;}
+ if(!internetEnabled&&!state?.browser?.installed){go('settings','browser');toast('Önce Playwright MCP kurulumunu tamamla');return;}
  internetEnabled=!internetEnabled;
  $('#internet-toggle').textContent=internetEnabled?'◉ İnternet açık':'◎ İnternet kapalı';
  $('#internet-toggle').setAttribute('aria-pressed',String(internetEnabled));
@@ -138,3 +140,33 @@ $('#install-browser').onclick=async()=>{
  try{await api('browser/install',{});$('#install-browser').disabled=true;$('#browser-status-text').textContent='Kurulum başlatıldı…';await refresh();toast('MCP kurulumu başlatıldı; durum burada güncellenecek');}
  catch(error){toast(error.message);}
 };
+
+
+// Management tabs preserve existing forms and credentials; only visibility changes.
+let managementSection='overview';
+const managementSections=['overview','providers','browser','access','notifications','usage'];
+function selectManagementSection(section){
+ managementSection=managementSections.includes(section)?section:'overview';
+ document.querySelectorAll('.management-tab').forEach(button=>{
+  const active=button.dataset.managementTab===managementSection;
+  button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
+ });
+ document.querySelectorAll('.management-panel').forEach(panel=>panel.classList.toggle('hidden',panel.id!=='management-panel-'+managementSection));
+ updateManagementOverview();
+}
+function updateManagementOverview(){
+ if(!state)return;
+ const agents=state.agents.filter(a=>a.configured&&a.enabled).length;
+ $('#management-agents').textContent=agents+' etkin bağlantı';
+ $('#management-browser').textContent=state.browser?.installing?'Kurulum sürüyor':state.browser?.installed?'MCP hazır':'Henüz kurulmadı';
+ const telegram=typeof workspaceData!=='undefined'?workspaceData.telegram:{};
+ $('#management-telegram').textContent=telegram?.enabled?'Bildirimler açık':'Bildirimler kapalı';
+ $('#management-cost').textContent='$'+state.usage.cost.toFixed(4)+' · Bugün';
+}
+document.addEventListener('click',event=>{const target=event.target.closest('[data-management-tab]');if(target)selectManagementSection(target.dataset.managementTab)});
+document.querySelector('.management-rail').addEventListener('keydown',event=>{
+ const tabs=[...document.querySelectorAll('.management-tab')],index=tabs.indexOf(document.activeElement);
+ if(index<0||!['ArrowDown','ArrowUp','ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+ event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(['ArrowDown','ArrowRight'].includes(event.key)?1:-1)+tabs.length)%tabs.length;
+ selectManagementSection(tabs[next].dataset.managementTab);tabs[next].focus();
+});
