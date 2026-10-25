@@ -11,6 +11,7 @@ import time
 import uuid
 import sys
 from datetime import datetime, timezone
+from .time_utils import APP_TIMEZONE, local_day, day_window
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -101,6 +102,8 @@ def initialize():
         CREATE INDEX IF NOT EXISTS runs_task ON runs(task_id);
         CREATE INDEX IF NOT EXISTS logs_task ON logs(task_id,id);
         """)
+        if "day_timezone" not in {row[1] for row in db.execute("PRAGMA table_info(deleted_costs)")}:
+            db.execute("ALTER TABLE deleted_costs ADD COLUMN day_timezone TEXT NOT NULL DEFAULT 'UTC'")
         columns = {row[1] for row in db.execute("PRAGMA table_info(runs)")}
         for column in ("finish_reason TEXT", "output_limit INTEGER"):
             if column.split()[0] not in columns:
@@ -311,7 +314,7 @@ def delete_history(user, body):
                     raise ValueError("Çalışan, kuyruktaki veya onay bekleyen görev silinemez")
         for row in rows:
             # Keep only anonymous accounting so clearing history cannot reset spending limits.
-            db.execute("INSERT INTO deleted_costs VALUES(?,?,?)", (uuid.uuid4().hex, row["created_at"][:10], row["cost"]))
+            db.execute("INSERT INTO deleted_costs(id,day,amount,day_timezone) VALUES(?,?,?,?)", (uuid.uuid4().hex, local_day(row["created_at"]), row["cost"], APP_TIMEZONE))
             (Path(DB_PATH).parent / "artifacts" / (row["id"] + ".txt")).unlink(missing_ok=True)
             for table in ("logs", "approvals", "runs"):
                 db.execute("DELETE FROM " + table + " WHERE task_id=?", (row["id"],))
@@ -388,11 +391,13 @@ def reserve_for(ids, judge, prompt=""):
 
 
 def usage_today(db):
-    day = now()[:10]
-    row = db.execute("SELECT coalesce(sum(cost),0),coalesce(sum(reserved),0) FROM tasks WHERE created_at>=?", (day,)).fetchone()
+    day, start, end = day_window(now())
+    cost = db.execute("SELECT coalesce(sum(cost),0) FROM tasks WHERE julianday(created_at)>=julianday(?) AND julianday(created_at)<julianday(?)", (start, end)).fetchone()[0]
+    # Legacy deleted records only retained a UTC date; preserve their day and total.
     deleted = db.execute("SELECT coalesce(sum(amount),0) FROM deleted_costs WHERE day=?", (day,)).fetchone()[0]
+    legacy = db.execute("SELECT count(*) FROM deleted_costs WHERE day=? AND day_timezone='UTC'", (day,)).fetchone()[0]
     total = db.execute("SELECT coalesce((SELECT sum(cost) FROM tasks),0)+coalesce((SELECT sum(amount) FROM deleted_costs),0)").fetchone()[0]
-    return {"cost": row[0] + deleted, "reserved": 0, "total_cost": total}
+    return {"cost": cost + deleted, "reserved": 0, "total_cost": total, "timezone": APP_TIMEZONE, "legacy_daily_estimate": bool(legacy)}
 
 
 def create_task(user, body, continuation_context="", resume_state="", retry_state="", db=None):
@@ -818,7 +823,7 @@ class Handler(BaseHTTPRequestHandler):
                 static[path] = ('brand.svg', 'image/svg+xml')
             if path == '/locales/en.json':
                 static[path] = ('locales/en.json', 'application/json; charset=utf-8')
-            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js'):
+            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
                 return self.respond(404, {"error": "Bulunamadı"})

@@ -6,6 +6,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 from .localization import translate
+from .time_utils import display_time
 
 import reportlab
 from reportlab.lib import colors
@@ -29,7 +30,7 @@ def markdown_report(task, runs, agents, single=False):
               "cancelled": label("İptal edildi", "Cancelled")}
     lines = ["# ECY Agent Harbor - " + label("Görev raporu", "Task report"), "",
              f"**{label('Görev', 'Task')}:** {task['title']}", f"**{label('Kimlik', 'ID')}:** {task['id']}",
-             f"**{label('Oluşturulma (UTC)', 'Created (UTC)')}:** {task['created_at']}",
+             f"**{label('Oluşturulma (İstanbul, GMT+03:00)', 'Created (Istanbul, GMT+03:00)')}:** {display_time(task['created_at'])}",
              f"**{label('Durum', 'Status')}:** {status.get(task['status'], task['status'])}",
              f"**{label('Maliyet', 'Cost')}:** ${task['cost']:.6f}", "", "## " + label("Görev girdisi", "Task input"), "", task["prompt"], ""]
     if task.get("synthesis") and not single:
