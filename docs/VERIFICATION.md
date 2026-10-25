@@ -36,3 +36,7 @@ Tarayıcı kontrolü ayrı 8787 mock veritabanında yapıldı. Şablon kaydedild
 Çift dil ve logo güncellemesi: **84 Python testi** ve `node tests/test_i18n.cjs` geçti. Tarayıcı dili Türkçe değilse İngilizce seçimi, kayıtlı tercihin önceliği, hatalı/erişilemeyen depolama davranışı, EN/TR API hata metinleri, rapor başlıkları ve özgün model/prompt metninin korunması test edildi. Tarayıcıda giriş, menüler, proje diyaloğu, şablonlar, sağlayıcılar, Telegram ayarları, geçmiş ve rapor ekranları kontrol edildi. Dil değişimi yazılmış promptu korudu; yenilemede tercih saklandı. 390 px genişlikte yatay sayfa taşması ve konsol hatası görülmedi. Yeni SVG logo ve dil düğmesinin yerleşimi geniş ekranda doğrulandı. Kullanıcı anahtarlarıyla ücretli test yapılmadı.
 
 Devam ettirme, tek adımı yeniden deneme ve önceki analizden takip görevi açma uçları da seçilen bildirim dilini korur; bu akışlar regresyon testine dahildir.
+
+## Istanbul time and management
+
+86 Python tests pass, plus `node tests/test_i18n.cjs` and `node tests/test_time.cjs`. Istanbul midnight boundaries and local daily cost totals are tested. Schedule parsing is checked with UTC, New York, Tokyo and Istanbul device time zones. The Management tabs were checked in the mock browser without contacting providers. Persisted instants stay UTC; new deleted-cost ledger dates use Istanbul. Legacy UTC date-only ledger rows retain their original dates and are identified as approximate in daily usage.
