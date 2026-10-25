@@ -99,6 +99,8 @@ def main():
             assert 'max-age=' in headers.get('Strict-Transport-Security',''),'HSTS missing'
             assert "img-src 'self' data:" in headers.get('Content-Security-Policy',''),'Image CSP missing'
             secure.call('/api/tasks',{},expected=403,csrf=False)
+            assert secure.call('/api/health/live')[0]=={'ok':True}
+            assert secure.call('/api/health/ready')[0]=={'ok':True}
             posture=secure.call('/api/security/posture')[0]
             assert posture['pdf_hard_memory_limit'] and posture['mfa']['admin'],'Linux/MFA posture mismatch'
             secure.call('/api/login',{'user':'admin','token':password,'code':recovery[0]},expected=403)
