@@ -47,7 +47,7 @@ class WorkspaceTests(unittest.TestCase):
         self.user = {'id':'admin','name':'Emre','role':'admin'}
 
     def project(self):
-        code, data = self.client.request('/api/projects', {'name':'Olay analizi','instruction':'Türkçe raporla'})
+        code, data = self.client.request('/api/projects', {'name':'Olay analizi','instruction':'Türkçe raporla','visibility':'workspace'})
         self.assertEqual(code, 201)
         return data['id']
 
