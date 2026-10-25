@@ -34,7 +34,9 @@ class WorkspaceTests(unittest.TestCase):
         cls.httpd.shutdown(); cls.httpd.server_close(); cls.temp.cleanup()
 
     def setUp(self):
+        server.security.ATTEMPTS.clear()
         with server.connect() as db:
+            db.execute("DELETE FROM provider_circuits");db.execute("DELETE FROM nodes")
             for table in ('logs','approvals','runs','tasks','files','projects','templates','schedules','integrations','deleted_costs'):
                 db.execute('DELETE FROM ' + table)
             db.execute('DELETE FROM agent_configs')

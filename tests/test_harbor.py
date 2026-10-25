@@ -90,7 +90,9 @@ class HarborTests(unittest.TestCase):
         cls.temp.cleanup()
 
     def setUp(self):
+        server.security.ATTEMPTS.clear()
         with server.connect() as db:
+            db.execute("DELETE FROM provider_circuits");db.execute("DELETE FROM nodes")
             for name in ("logs", "approvals", "runs", "tasks", "deleted_costs"):
                 db.execute("DELETE FROM " + name)
             db.execute("DELETE FROM credentials")
@@ -306,9 +308,9 @@ class HarborTests(unittest.TestCase):
         client = Client()
         with patch.object(server, "MODE", "live"):
             self.assertTrue(client.request("/api/auth/status")[1]["setup_required"])
-            self.assertEqual(client.request("/api/setup", {"password": "short"})[0], 400)
-            self.assertEqual(client.request("/api/setup", {"password": "test-password-1234"})[0], 201)
-            self.assertEqual(client.request("/api/setup", {"password": "another-pass-1234"})[0], 400)
+            self.assertEqual(client.request("/api/setup", {"password": "short", "bootstrap_token": server.security.bootstrap_token(server)})[0], 400)
+            self.assertEqual(client.request("/api/setup", {"password": "test-password-1234", "bootstrap_token": server.security.bootstrap_token(server)})[0], 201)
+            self.assertEqual(client.request("/api/setup", {"password": "another-pass-1234"})[0], 403)
             self.assertFalse(client.request("/api/auth/status")[1]["setup_required"])
             self.assertEqual(client.request("/api/login", {"user": "admin", "token": "bad"})[0], 403)
             self.assertEqual(client.request("/api/login", {"user": "admin", "token": "test-password-1234"})[0], 200)

@@ -18,6 +18,7 @@ import test_harbor as helpers
 class LocalizationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        server.security.ATTEMPTS.clear()
         cls.temp=tempfile.TemporaryDirectory();server.DB_PATH=str(Path(cls.temp.name)/'i18n.db');server.initialize()
         cls.httpd=server.ThreadingHTTPServer(('127.0.0.1',0),server.Handler);helpers.BASE=f'http://127.0.0.1:{cls.httpd.server_port}'
         threading.Thread(target=cls.httpd.serve_forever,daemon=True).start();cls.client=helpers.Client();cls.client.login('admin')
