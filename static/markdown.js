@@ -19,8 +19,15 @@ function renderMarkdown(source){
   const source=image.getAttribute('src')||'';
   try{
    const url=new URL(source,location.href);
-   if(!['https:','http:'].includes(url.protocol)&&!/^data:image\/(png|jpeg|webp|gif);base64,/i.test(source)){
-    image.replaceWith(document.createTextNode(image.alt||'[Görsel]'));continue;
+   const raster=/^data:image\/(png|jpeg|webp|gif);base64,/i.test(source);
+   const evidence=url.origin===location.origin&&/^\/api\/files\/[a-f0-9]{32}$/.test(url.pathname)&&url.search==='?image=1';
+   if(!raster&&!evidence){
+    const placeholder=document.createElement('span');placeholder.className='external-image-note';
+    placeholder.textContent=(image.alt||I18n.t('Görsel'))+' · '+I18n.t('Dış görsel otomatik yüklenmedi');
+    if(['http:','https:'].includes(url.protocol)){
+     const link=document.createElement('a');link.href=url.href;link.textContent=' ('+url.hostname+')';link.target='_blank';link.rel='noopener noreferrer';link.referrerPolicy='no-referrer';placeholder.append(link);
+    }
+    image.replaceWith(placeholder);continue;
    }
    image.loading='lazy';image.decoding='async';image.referrerPolicy='no-referrer';
   }catch(error){image.replaceWith(document.createTextNode(image.alt||'[Görsel]'));}

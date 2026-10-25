@@ -15,7 +15,7 @@ function configureLogin(){
  $('#login-description').textContent=setupRequired?'Yönetici parolanı belirle. Ardından API ayarlarından kendi ajanlarını ekleyebilirsin.':authMode==='mock'?'Test ortamı: bir rol seç.':'Hesabını seç ve parolanla giriş yap.';
  $('#login-role-field').classList.toggle('hidden',setupRequired);
  $('#setup-confirm-field').classList.toggle('hidden',!setupRequired);
- $('#setup-confirm').required=setupRequired;
+ $('#setup-confirm').required=setupRequired;$('#bootstrap-field').classList.toggle('hidden',!setupRequired);$('#bootstrap-code').required=setupRequired;
  $('#login-token').required=authMode!=='mock';
  $('#login-token').minLength=setupRequired?12:0;
  $('#login-token').autocomplete=setupRequired?'new-password':'current-password';
@@ -28,10 +28,10 @@ async function handleLogin(event){
   const token=$('#login-token').value;
   if(setupRequired){
    if(token!==$('#setup-confirm').value)throw new Error('Parolalar eşleşmiyor');
-   await api('setup',{password:token});
+   await api('setup',{password:token,bootstrap_token:$('#bootstrap-code').value});$('#bootstrap-code').value='';
    setupRequired=false;$('#login-user').value='admin';
   }
-  await api('login',{user:$('#login-user').value,token});
+  await api('login',{user:$('#login-user').value,token,code:$('#login-code').value});$('#login-code').value='';
   $('#login-token').value='';$('#setup-confirm').value='';$('#login-error').textContent='';
   $('#login-dialog').close();await refresh(true);
   if(!state.agents.some(a=>a.configured&&a.enabled))go('settings','providers');
@@ -146,7 +146,7 @@ $('#install-browser').onclick=async()=>{
 
 // Management tabs preserve existing forms and credentials; only visibility changes.
 let managementSection='overview';
-const managementSections=['overview','providers','browser','access','notifications','usage','backup','hooks'];
+const managementSections=['overview','providers','browser','access','notifications','usage','backup','hooks','security'];
 function selectManagementSection(section){
  managementSection=managementSections.includes(section)?section:'overview';
  document.querySelectorAll('.management-tab').forEach(button=>{
@@ -154,7 +154,7 @@ function selectManagementSection(section){
   button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  });
  document.querySelectorAll('.management-panel').forEach(panel=>panel.classList.toggle('hidden',panel.id!=='management-panel-'+managementSection));
- updateManagementOverview();if(typeof refreshPlatform==='function'&&['backup','hooks'].includes(managementSection))refreshPlatform(true);
+ updateManagementOverview();if(typeof refreshMCP==='function'&&['browser','security'].includes(managementSection))refreshMCP(true);if(typeof refreshPlatform==='function'&&['backup','hooks','security'].includes(managementSection))refreshPlatform(true);
 }
 function updateManagementOverview(){
  if(!state)return;
