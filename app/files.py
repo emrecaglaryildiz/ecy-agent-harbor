@@ -130,3 +130,36 @@ def sources(db, tid):
                 seen.add(url)
                 inventory.append({'kind': 'web', 'url': url, 'label': 'Modelin atıf yaptığı URL; içerik doğruluğu otomatik doğrulanmadı'})
     return inventory
+
+
+def search(db, project_id, query, offset=0, limit=50):
+    """Literal Unicode case-insensitive search; one hit per source line, paginated.
+
+    Search stays on the local server. Snippets are data and never rendered as HTML.
+    Images have no extracted text and are deliberately excluded.
+    """
+    query = query.strip()
+    if not query or len(query) > 200 or any(c in query for c in ('\n', '\r', '\x00')):
+        raise ValueError('Arama metni tek satırda 1–200 karakter olmalı')
+    if offset < 0 or not 1 <= limit <= 100:
+        raise ValueError('Geçersiz arama sayfası')
+    pattern = re.compile(re.escape(query), re.IGNORECASE)
+    results, skipped = [], 0
+    for row in db.execute("SELECT * FROM files WHERE project_id IS ? AND kind='text' ORDER BY id", (project_id,)):
+        for number, line in enumerate(row['text'].splitlines(), 1):
+            line = line.rstrip('\r\n')
+            match = pattern.search(line)
+            if not match:
+                continue
+            if skipped < offset:
+                skipped += 1
+                continue
+            if len(results) == limit:
+                return {'results': results, 'offset': offset, 'next_offset': offset + limit}
+            # Keep the actual match visible even when a single log line is enormous.
+            start = max(0, match.start() - 120)
+            end = min(len(line), max(start + 320, match.end() + 120))
+            results.append({'file': metadata(row), 'line': number, 'snippet': line[start:end],
+                            'match_start': match.start() - start, 'match_end': match.end() - start,
+                            'prefix_omitted': start > 0, 'suffix_omitted': end < len(line)})
+    return {'results': results, 'offset': offset, 'next_offset': None}

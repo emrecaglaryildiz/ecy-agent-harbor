@@ -112,7 +112,16 @@ def state(db, user):
 def handle_get(handler, user, path, db, server):
     if path == '/api/workspace':
         handler.respond(200, state(db, user)); return True
+    if path == '/api/files/search':
+        query = parse_qs(urlparse(handler.path).query)
+        pid = query.get('project_id', ['__general'])[0]
+        pid = None if pid == '__general' else pid
+        check_project(db, user, pid)
+        handler.respond(200, files.search(db, pid, query.get('q', [''])[0],
+                                        int(query.get('offset', ['0'])[0]), int(query.get('limit', ['50'])[0])))
+        return True
     if path.startswith('/api/files/'):
+
         fid = path.split('/')[-1]
         row = db.execute('SELECT * FROM files WHERE id=?', (fid,)).fetchone()
         if not row:
