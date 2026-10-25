@@ -82,6 +82,17 @@ class SecurityTests(unittest.TestCase):
             with self.assertRaises(ValueError):pdf_service.extract(b'%PDF-fake')
             self.assertTrue(kill.called)
         self.assertTrue(pdf_service.SLOTS.acquire(blocking=False));pdf_service.SLOTS.release()
+
+    def test_pdf_worker_does_not_shadow_standard_library_modules(self):
+        import subprocess,sys,tempfile
+        from pathlib import Path
+        worker=Path(pdf_service.__file__).with_name('pdf_worker.py').resolve()
+        # Reproduce direct script startup, including app/platform.py on sys.path.
+        script="import sys,os,runpy;sys.path.insert(0,os.path.dirname(sys.argv[1]));runpy.run_path(sys.argv[1],run_name='probe');sys.modules.pop('platform',None);import platform;assert callable(platform.system);print('stdlib platform')"
+        with tempfile.TemporaryDirectory() as directory:
+            result=subprocess.run([sys.executable,'-E','-c',script,str(worker)],cwd=directory,capture_output=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr.decode(errors='replace'))
+        self.assertEqual(result.stdout.strip(),b'stdlib platform')
     def test_external_image_csp_has_no_remote_allowance(self):
         with urllib.request.urlopen(helpers.BASE+'/') as response:
             policy=response.headers['Content-Security-Policy'];self.assertIn("img-src 'self' data:;",policy);self.assertNotIn('data: https:',policy)
