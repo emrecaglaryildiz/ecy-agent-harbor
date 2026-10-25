@@ -1,7 +1,7 @@
 /* Personal workspace extensions. All model/file text is rendered as data. */
 let workspaceData={projects:[],files:[],templates:[],schedules:[],notifications:[],telegram:{}}, currentProject='', selectedFiles=[], workspaceLoaded=0, workspaceSignature='', followupTask=null;
 function workspaceQuery(){return '?project_id='+encodeURIComponent(currentProject||'__general')}
-function taskPayload(){return {language:uiLanguage(),prompt:$('#prompt').value,mode,agents:[...selected],judge:$('#judge').value||null,tool_requested:$('#tool').checked,web_enabled:internetEnabled,project_id:currentProject||null,file_ids:[...selectedFiles],review_enabled:$('#review-enabled').checked,fallback_agent:$('#fallback-agent').value||null}}
+function taskPayload(){return {knowledge_ids:typeof selectedKnowledge!=='undefined'?[...selectedKnowledge]:[],language:uiLanguage(),prompt:$('#prompt').value,mode,agents:[...selected],judge:$('#judge').value||null,tool_requested:$('#tool').checked,web_enabled:internetEnabled,project_id:currentProject||null,file_ids:[...selectedFiles],review_enabled:$('#review-enabled').checked,fallback_agent:$('#fallback-agent').value||null}}
 function editableRecord(record){return state&&state.user.role!=='viewer'&&(state.user.role==='admin'||record.owner_id===state.user.id)}
 function modal(title,html){const d=$('#workspace-dialog');$('#workspace-dialog-title').textContent=title;$('#workspace-dialog-body').innerHTML=html;$('#workspace-dialog-error').textContent='';d.showModal()}
 async function mutateWorkspace(path,body){await api(path,body);workspaceSignature='';await refreshWorkspace(true);if(path==='files/delete')clearEvidenceSearch()}
@@ -13,7 +13,7 @@ async function refreshWorkspace(force=false){
  const target=new URLSearchParams(location.search).get('task');if(target&&!window.linkedTaskOpened){window.linkedTaskOpened=true;await openTask(target)}
 }
 function renderWorkspace(){
- if(evidenceSearchScope!==currentProject)clearEvidenceSearch();
+ if(evidenceSearchScope!==currentProject)clearEvidenceSearch();if(typeof platformScopeChanged==='function')platformScopeChanged();
  const writable=state.user.role!=='viewer';
  if(currentProject&&!workspaceData.projects.some(p=>p.id===currentProject)){currentProject='';selectedFiles=[]}
  $('#project-scope').innerHTML='<option value="">Genel alan</option>'+workspaceData.projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');$('#project-scope').value=currentProject;

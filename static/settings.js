@@ -68,6 +68,7 @@ async function editAgent(id=null){
  $('#agent-editor-title').textContent=id?'Ajan ayarlarını düzenle':'Yeni ajan ekle';
  for(const field of ['name','role','model','endpoint','hardware','instruction'])$('#agent-'+field).value=a[field]||'';
  $('#agent-provider').value=a.provider||'openai-compatible';
+ const caps=a.capabilities||{};for(const key of ['vision','tools'])$('#agent-'+key).value=caps[key]===true?'yes':caps[key]===false?'no':'unknown';$('#agent-context').value=caps.context_tokens||'';$('#agent-specialties').value=(caps.specialties||[]).join(', ');
  $('#agent-price').value=a.price??0;$('#agent-color').value=a.color||'mint';
  $('#agent-enabled').checked=a.enabled??true;$('#agent-safe-mode').checked=!!a.safe_mode;
  $('#agent-key-status').textContent=a.has_api_key?'Kayıtlı anahtar korunur. Değiştirmek için yeni anahtar yaz.':'Anahtar gerekmeyen yerel servisler için boş bırakabilirsin.';
@@ -81,6 +82,7 @@ $('#agent-form').onsubmit=async event=>{
  event.preventDefault();$('#save-agent').disabled=true;
  try{
   const body={};for(const field of ['id','name','role','model','endpoint','hardware','instruction','provider','color'])body[field]=$('#agent-'+field).value;
+  body.capabilities={vision:$('#agent-vision').value==='unknown'?null:$('#agent-vision').value==='yes',tools:$('#agent-tools').value==='unknown'?null:$('#agent-tools').value==='yes',context_tokens:$('#agent-context').value?Number($('#agent-context').value):null,specialties:$('#agent-specialties').value.split(',').map(x=>x.trim()).filter(Boolean)};
   body.api_key=$('#agent-key').value;body.clear_key=$('#agent-clear-key').checked;
   body.price=Number($('#agent-price').value);body.enabled=$('#agent-enabled').checked;body.safe_mode=$('#agent-safe-mode').checked;
   const result=await api('agents',body);$('#agent-key').value='';$('#agent-dialog').close();
@@ -144,7 +146,7 @@ $('#install-browser').onclick=async()=>{
 
 // Management tabs preserve existing forms and credentials; only visibility changes.
 let managementSection='overview';
-const managementSections=['overview','providers','browser','access','notifications','usage'];
+const managementSections=['overview','providers','browser','access','notifications','usage','backup','hooks'];
 function selectManagementSection(section){
  managementSection=managementSections.includes(section)?section:'overview';
  document.querySelectorAll('.management-tab').forEach(button=>{
@@ -152,7 +154,7 @@ function selectManagementSection(section){
   button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  });
  document.querySelectorAll('.management-panel').forEach(panel=>panel.classList.toggle('hidden',panel.id!=='management-panel-'+managementSection));
- updateManagementOverview();
+ updateManagementOverview();if(typeof refreshPlatform==='function'&&['backup','hooks'].includes(managementSection))refreshPlatform(true);
 }
 function updateManagementOverview(){
  if(!state)return;

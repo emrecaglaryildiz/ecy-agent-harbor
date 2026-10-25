@@ -8,6 +8,8 @@
  const originals=new WeakMap(), attrs=new WeakMap();
  const excluded='.markdown-body,.prompt-detail,.evidence-lines,.provider-address,#detail-title,#project-grid h2,#file-library b,#attachment-list .attachment-chip span,#agent-picker b,#agent-cards h2,.provider-card h3,#connection-nodes b,#connection-nodes small,.flow-person,#flow-judge-name,[data-i18n-ignore="true"],#template-grid article[data-user-template="true"] h2,#template-grid article[data-user-template="true"] p,#schedule-list h2,#schedule-list p[data-user-prompt="true"]';
  const rules=[
+  [/^(Yeni|İnceleniyor|Doğrulandı|Çözüldü|Kapatıldı): (\d+)$/, (_,label,count)=>({Yeni:'New',İnceleniyor:'Investigating',Doğrulandı:'Confirmed',Çözüldü:'Resolved',Kapatıldı:'Dismissed'}[label])+': '+count],
+  [/^Göreve seçilen bilgi: (\d+)$/, 'Knowledge selected for the task: $1'],
   [/^Eşleşen satırlar: (\d+)–(\d+)$/, 'Matching lines: $1–$2'],
   [/^([\d.,]+) etkin bağlantı$/, '$1 active connections'],
   [/^1 ajan seçili$/, '1 agent selected'],[/^1 dosya seçili$/, '1 file selected'],[/^1 görev seçili$/, '1 task selected'],
