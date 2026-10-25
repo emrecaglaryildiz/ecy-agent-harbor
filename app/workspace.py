@@ -61,6 +61,12 @@ def task_options(db, user, body, server):
         if not row or row['project_id'] != pid:
             raise ValueError('Dosyalar seçilen proje alanından olmalı')
         rows.append(row)
+    for aid in body.get('agents', []) + ([body['fallback_agent']] if body.get('fallback_agent') else []):
+        caps=server.BY_ID[aid].get('capabilities', {})
+        if any(r['kind']=='image' for r in rows) and caps.get('vision') is False:
+            raise ValueError('Seçilen ajan görsel desteklemiyor')
+        if body.get('web_enabled') and caps.get('tools') is False:
+            raise ValueError('Seçilen ajan araç çağrısı desteklemiyor')
     if any(r['kind'] == 'image' for r in rows):
         participants = body.get('agents', []) + ([body['fallback_agent']] if body.get('fallback_agent') else [])
         if any(server.BY_ID[x]['provider'] != 'openai-compatible' for x in participants):
@@ -77,7 +83,7 @@ def attach(db, tid, options):
 def clean_config(config, server):
     if not isinstance(config, dict):
         raise ValueError('Görev ayarları geçersiz')
-    result = {k: config[k] for k in ('prompt', 'mode', 'agents', 'judge', 'fallback_agent', 'web_enabled', 'review_enabled', 'tool_requested', 'project_id', 'file_ids', 'language') if k in config}
+    result = {k: config[k] for k in ('prompt', 'mode', 'agents', 'judge', 'fallback_agent', 'web_enabled', 'review_enabled', 'tool_requested', 'project_id', 'file_ids', 'knowledge_ids', 'language') if k in config}
     if result.get('language', 'tr') not in ('tr', 'en'):
         raise ValueError('Dil tr veya en olmalı')
     prompt = result.get('prompt', '')

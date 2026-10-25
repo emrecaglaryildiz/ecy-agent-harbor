@@ -12,6 +12,7 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from .time_utils import APP_TIMEZONE, local_day, day_window
+from . import platform
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -123,6 +124,8 @@ def initialize():
             if column.split()[0] not in {r[1] for r in db.execute("PRAGMA table_info(tasks)")}:
                 db.execute("ALTER TABLE tasks ADD COLUMN " + column)
         workspace.initialize(db)
+        platform.initialize(db)
+        db.execute("CREATE TRIGGER IF NOT EXISTS run_finished AFTER UPDATE OF status ON runs WHEN NEW.status IN ('completed','failed','incomplete','cancelled') AND NEW.finished_at IS NULL BEGIN UPDATE runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%f+00:00','now') WHERE id=NEW.id; END")
         # Legacy calls used a fixed 1,500-token cap and did not record finish_reason.
         db.execute("UPDATE runs SET status='incomplete',finish_reason='legacy_length_suspected',output_limit=1500 WHERE status='completed' AND finish_reason IS NULL AND output_tokens>=1500")
         db.execute("UPDATE tasks SET status='incomplete' WHERE status='completed' AND EXISTS(SELECT 1 FROM runs WHERE runs.task_id=tasks.id AND runs.status='incomplete')")
@@ -248,6 +251,7 @@ def save_agent(user, body):
         agent["price"] = float(body.get("price", old.get("price", 0)))
         if not math.isfinite(agent["price"]) or not 0 <= agent["price"] <= 100:
             raise ValueError("Birim fiyat 0–100 USD / 1000 token arasında olmalı")
+        agent["capabilities"] = platform.capabilities(body, old)
         agent.pop("max_output_tokens", None)
         key = body.get("api_key", "")
         if not isinstance(key, str) or len(key) > 8000:
@@ -325,7 +329,7 @@ def delete_history(user, body):
 
 def public_agent(a):
     return {k: a[k] for k in ("id", "name", "role", "provider", "model", "hardware", "color", "price")} | {
-        "configured": bool(a["endpoint"]), "enabled": a.get("enabled", True),
+        "capabilities": a.get("capabilities", {}), "configured": bool(a["endpoint"]), "enabled": a.get("enabled", True),
         "input_overhead": len(a["instruction"].encode()) + 512,
         "status": "mock" if MODE == "mock" else ("configured" if a["endpoint"] and a.get("enabled", True) else "unconfigured")}
 
@@ -375,7 +379,7 @@ def public_run(row):
             run["can_resume_from_evidence"] = any(message.get("role") == "tool" for message in json.loads(state).get("messages", []))
         except (ValueError, TypeError):
             pass
-    run["agent_name"] = BY_ID.get(run["agent_id"], {}).get("name", run["agent_id"])
+    run["agent_name"] = run.get("agent_name_snapshot") or BY_ID.get(run["agent_id"], {}).get("name", run["agent_id"])
     return run
 
 
@@ -451,6 +455,9 @@ def _create_task(user, body, continuation_context="", resume_state="", retry_sta
                    (tid, prompt.strip()[:70], prompt.strip(), mode, json.dumps(ids), judge, "queued", user["id"], now(), now(), budget, reserve, int(bool(body.get("tool_requested", False))), continuation_context, int(web_enabled), resume_state))
         db.execute("UPDATE tasks SET fallback_agent=?,retry_state=? WHERE id=?", (fallback, retry_state, tid))
         workspace.attach(db, tid, options)
+        knowledge = platform.knowledge_context(db, options[0], body.get("knowledge_ids", []))
+        if knowledge:
+            db.execute("UPDATE tasks SET continuation_context=? WHERE id=?", ((continuation_context+"\n\n"+knowledge).strip(), tid))
         db.execute('UPDATE tasks SET language=? WHERE id=?', (lang, tid))
         log(db, tid, "queued", f"Görev kuyruğa alındı · {user['name']}")
     return tid
@@ -506,6 +513,7 @@ def run_agent(tid, aid, prompt, kind="participant", context="", continuation=Fal
             return None
         db.execute("INSERT INTO runs(id,task_id,agent_id,kind,status,created_at) VALUES(?,?,?,?,?,?)", (rid, tid, aid, kind, "running", now()))
         db.execute("UPDATE runs SET request_state=? WHERE id=?", (json.dumps({"prompt": prompt, "context": context, "continuation": continuation}, ensure_ascii=False), rid))
+        db.execute("UPDATE runs SET model_snapshot=?,provider_snapshot=?,agent_name_snapshot=? WHERE id=?", (BY_ID[aid]["model"], BY_ID[aid]["provider"], BY_ID[aid]["name"], rid))
         log(db, tid, "agent_started", f"{BY_ID[aid]['name']} başladı · {kind}")
     reservation = call_reserve(BY_ID[aid], prompt, len(json.loads(task[1])) if kind == "judge" else 0)
     web = None
@@ -765,6 +773,8 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/"):
                 user, session = self.user()
                 with connect() as db:
+                    if platform.handle_get(self, user, path, db, sys.modules[__name__]):
+                        return
                     if workspace.handle_get(self, user, path, db, sys.modules[__name__]):
                         return
                     if path == "/api/browser/status":
@@ -823,7 +833,7 @@ class Handler(BaseHTTPRequestHandler):
                 static[path] = ('brand.svg', 'image/svg+xml')
             if path == '/locales/en.json':
                 static[path] = ('locales/en.json', 'application/json; charset=utf-8')
-            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js'):
+            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
                 return self.respond(404, {"error": "Bulunamadı"})
@@ -857,6 +867,12 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError("JSON nesnesi gerekli")
+            if path.startswith("/api/hooks/"):
+                token = self.headers.get("Authorization", "")
+                if not token.startswith("Bearer "):
+                    raise PermissionError("Webhook yetkisi geçersiz")
+                result = platform.receive_webhook(sys.modules[__name__], path.rsplit("/",1)[-1], token[7:], self.headers.get("Idempotency-Key", ""), body)
+                return self.respond(200 if result["replayed"] else 201, result)
             if path == "/api/setup":
                 if urlparse("http://" + self.headers.get("Host", "")).hostname not in ("localhost", "127.0.0.1", "::1"):
                     raise PermissionError("İlk kurulumu bu bilgisayarda localhost adresinden tamamla")
@@ -892,6 +908,8 @@ class Handler(BaseHTTPRequestHandler):
                 secure = "; Secure" if os.getenv("COOKIE_SECURE") == "1" else ""
                 return self.respond(200, {"ok": True}, "harbor=" + sid + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800" + secure)
             user, session = self.user()
+            if platform.handle_post(self, user, path, body, sys.modules[__name__]):
+                return
             if workspace.handle_post(self, user, path, body, sys.modules[__name__]):
                 return
             if path == "/api/browser/install":
@@ -927,17 +945,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/tasks":
                 return self.respond(201, {"id": create_task(user, body)})
             if path.startswith('/api/tasks/') and path.endswith('/followup'):
-                tid = path.split('/')[-2]
-                with connect() as db:
-                    row = db.execute('SELECT * FROM tasks WHERE id=?', (tid,)).fetchone()
-                    if not row or row['status'] not in ('completed','incomplete','failed','cancelled'):
-                        raise ValueError('Önceki görev bitmiş olmalı')
-                    cfg = task_dict(row)
-                    cfg['prompt'] = body.get('prompt', '')
-                    cfg['language'] = body.get('language', row['language'])
-                    cfg['file_ids'] = [r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?', (tid,))]
-                    prior = '\n\n'.join(r[0] or '' for r in db.execute('SELECT output FROM runs WHERE task_id=?', (tid,)))
-                return self.respond(201, {'id': create_task(user, cfg, continuation_context=prior)})
+                return self.respond(201, {'id': platform.followup(sys.modules[__name__], user, path.split('/')[-2], body)})
             if path.startswith("/api/tasks/") and path.endswith("/retry"):
                 tid = path.split("/")[-2]
                 with connect() as db:

@@ -43,7 +43,11 @@ def participant(server, task, aid, continuation='', resume_state='', retry_state
         return execute(server, task, aid, retry_state['prompt'], 'participant', retry_state.get('context', ''), continuation=retry_state.get('continuation', False))
     with server.connect() as db:
         rows = [dict(r) for r in db.execute('SELECT f.* FROM files f JOIN task_files t ON t.file_id=f.id WHERE t.task_id=? ORDER BY f.created_at', (task['id'],))]
-    if resume_state or continuation or not rows:
+    if continuation and task.get('parent_task'):
+        with server.connect() as db:
+            previous={r[0] for r in db.execute('SELECT file_id FROM task_files WHERE task_id=?',(task['parent_task'],))}
+        rows=[r for r in rows if r['id'] not in previous]
+    if resume_state or not rows:
         return execute(server, task, aid, task['prompt'], context=continuation, continuation=bool(continuation), resume_state=resume_state)
     results = []
     for row in rows:
@@ -60,7 +64,7 @@ def participant(server, task, aid, continuation='', resume_state='', retry_state
                 if bad:
                     return part
             results.append(part)
-    context = reduce_context(server, task, aid, '\n\n'.join(results))
+    context = reduce_context(server, task, aid, (continuation+'\n\n'+'\n\n'.join(results)).strip())
     if context is None:
         return None
     return execute(server, task, aid, task['prompt'] + '\nDosya parçalarından elde edilen tüm bulguları birlikte değerlendir. Bulgular, kanıt, alternatif açıklama ve eksik veri başlıklarını kullan. Kaynak atıflarını koru.', context=context)
