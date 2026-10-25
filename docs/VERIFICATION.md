@@ -40,3 +40,7 @@ Devam ettirme, tek adımı yeniden deneme ve önceki analizden takip görevi aç
 ## Istanbul time and management
 
 86 Python tests pass, plus `node tests/test_i18n.cjs` and `node tests/test_time.cjs`. Istanbul midnight boundaries and local daily cost totals are tested. Schedule parsing is checked with UTC, New York, Tokyo and Istanbul device time zones. The Management tabs were checked in the mock browser without contacting providers. Persisted instants stay UTC; new deleted-cost ledger dates use Istanbul. Legacy UTC date-only ledger rows retain their original dates and are identified as approximate in daily usage.
+
+## Local evidence search
+
+89 Python tests pass. Search regressions cover project isolation, literal regex-like input, Turkish case-insensitive matching, CR/CRLF source line consistency, 121 results across three pages, a 200 KB single log line, viewer access, invalid parameters, and anonymous rejection. Browser checks covered Turkish/English language switching, highlighted results, source line opening, attaching a file without starting a task, and mobile layout without horizontal overflow. Language and Istanbul scheduling Node checks pass. No paid provider calls were used.

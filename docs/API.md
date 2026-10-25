@@ -99,3 +99,9 @@ Tüm uçlar mevcut oturum/RBAC kurallarını kullanır; POST için CSRF zorunlud
 - `POST /api/notifications/retry`: yönetici; `{id}`. Belirsiz teslimatı tekrar göndermek kopya mesaj oluşturabilir.
 
 Zamanlayıcı her beş saniyede kontrol eder; iş kaydı ve `next_run` aynı SQLite işlemi içinde ilerletilir. Telegram outbox durumu `pending → sending → sent/failed/unknown` olur. Başlangıçta `sending` kayıtları `unknown` yapılır; otomatik tekrar edilmez.
+
+## Local evidence search
+
+`GET /api/files/search?q=401&project_id=__general&offset=0&limit=50` requires an authenticated session (all roles). Use a project ID to search that shared project, or omit `project_id` / use `__general` for general workspace files. A missing project returns 400. Literal Unicode case-insensitive queries must be 1–200 characters on one line. `limit` is 1–100; offset is a nonnegative count of matching lines to skip.
+
+Response: `{results:[{file:{...metadata},line:2,snippet:"...",match_start:10,match_end:13,prefix_omitted:false,suffix_omitted:false}],offset:0,next_offset:null}`. Match positions are Unicode code-point offsets for the snippet; JavaScript clients should slice `Array.from(snippet)` to preserve emoji and other non-BMP characters. Each matching source line appears once, even if it contains several matches. `next_offset` points to the next page or is null when exhausted. Images are excluded; text extracted from PDFs is included. Search uses a direct scan, has no model cost, and returns plain data. Render snippets as escaped text. Source lines use the same numbering as `/api/files/{id}`. There is no snapshot isolation between separate pages; file changes can shift results.
