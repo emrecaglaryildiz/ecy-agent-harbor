@@ -564,5 +564,19 @@
   "Bugün": "Today",
   "İlk çalışma (İstanbul, GMT+03:00)": "First run (Istanbul, GMT+03:00)",
   "Saat dilimi: İstanbul · GMT+03:00": "Time zone: Istanbul · GMT+03:00",
-  "Eski silinmiş kayıtların günlük payı tahminidir; toplam tutar korunur.": "The daily share of legacy deleted records is approximate; the total is preserved."
+  "Eski silinmiş kayıtların günlük payı tahminidir; toplam tutar korunur.": "The daily share of legacy deleted records is approximate; the total is preserved.",
+  "Dosya içeriğinde ara": "Search file contents",
+  "Seçili projenin metin, log ve PDF metninde ara. Görseller dahil değildir. Arama yerel çalışır; sağlayıcı çağrısı yapmaz.": "Search text, logs and extracted PDF text in the selected project. Images are excluded. Search runs locally without contacting a provider.",
+  "Aranacak metin": "Search text",
+  "IP adresi, hata kodu veya anahtar sözcük": "IP address, error code or keyword",
+  "Ara": "Search",
+  "Temizle": "Clear",
+  "Aranıyor…": "Searching…",
+  "Eşleşen satırlar": "Matching lines",
+  "Eşleşme bulunamadı.": "No matches found.",
+  "Satırı aç": "Open line",
+  "Göreve ekle": "Add to task",
+  "Görevden çıkar": "Remove from task",
+  "Arama metni tek satırda 1–200 karakter olmalı": "Search text must be 1–200 characters on a single line",
+  "Geçersiz arama sayfası": "Invalid search page"
 }
