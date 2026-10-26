@@ -216,3 +216,9 @@ Isolated mock workspace with fictional data and example ratings; no real hardwar
 ![Restore rehearsal / Geri yükleme provası](docs/preview-recovery.png)
 
 Screenshot uses synthetic mock evidence and a paused test queue. / Görüntü sentetik mock kanıt ve duraklatılmış test kuyruğudur.
+
+[Storage & retention / Depolama ve saklama](docs/DATA-LIFECYCLE.md): admin-only local inventory, atomic file publication and project-scoped retention preview. No automatic deletion. / Yöneticiye özel yerel envanter, tamamlanmış dosya yayımı ve proje bazlı saklama önizlemesi; otomatik silme yok.
+
+![Storage & retention / Depolama ve saklama](docs/preview-lifecycle.png)
+
+Synthetic mock workspace; no real files, keys or retention deletion. / Sentetik test alanı; gerçek dosya, anahtar veya saklama silmesi kullanılmadı.
