@@ -154,7 +154,7 @@ function selectManagementSection(section){
   button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;
  });
  document.querySelectorAll('.management-panel').forEach(panel=>panel.classList.toggle('hidden',panel.id!=='management-panel-'+managementSection));
- updateManagementOverview();if(typeof refreshAudit==='function'&&managementSection==='audit')refreshAudit(true);if(typeof refreshMCP==='function'&&['browser','security'].includes(managementSection))refreshMCP(true);if(typeof refreshPlatform==='function'&&['backup','hooks','security'].includes(managementSection))refreshPlatform(true);
+ updateManagementOverview();if(typeof refreshBackupReadiness==='function'&&managementSection==='backup')refreshBackupReadiness();if(typeof refreshAudit==='function'&&managementSection==='audit')refreshAudit(true);if(typeof refreshMCP==='function'&&['browser','security'].includes(managementSection))refreshMCP(true);if(typeof refreshPlatform==='function'&&['backup','hooks','security'].includes(managementSection))refreshPlatform(true);
 }
 function updateManagementOverview(){
  if(!state)return;
