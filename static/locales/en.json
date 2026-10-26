@@ -1181,5 +1181,20 @@
   "Geçersiz dosya deposu": "Invalid file store",
   "Dosya deposu güvenli bir klasör olmalı": "The file store must be a safe directory",
   "Dosya bağlantısı kullanılamaz": "File links are not allowed",
-  "Normal dosya gerekli": "A regular file is required"
+  "Normal dosya gerekli": "A regular file is required",
+  "Sürüm geçmişi": "Revision history",
+  "MCP sürüm geçmişi": "MCP revision history",
+  "Bu geçmiş yalnızca sürüm, izin ve tanım özetlerini içerir; anahtar, adres, şema gövdesi ve çağrı argümanları kaydedilmez. Eski sürüme otomatik dönüş yoktur.": "This history contains revision, permission and definition fingerprints only. Keys, addresses, schema bodies and call arguments are excluded. There is no automatic rollback.",
+  "Güncel sürüm": "Current revision",
+  "İzin ve tanım özetleri": "Permission and definition fingerprints",
+  "Önceki sürümler": "Earlier revisions",
+  "Mevcut bağlantı başlangıcı": "Existing connection baseline",
+  "Bağlantı ayarları": "Connection settings",
+  "Araç keşfi": "Tool discovery",
+  "Keşif başarısız": "Discovery failed",
+  "İzin değişikliği": "Permission change",
+  "Pasife alındı": "Disabled",
+  "MCP sürümü değişti; ekranı yenile": "The MCP revision changed; refresh the screen",
+  "MCP sürümü değişti; çağrıyı yeniden oluştur": "The MCP revision changed; prepare a new call",
+  "MCP geçmiş sayfası geçersiz": "Invalid MCP history page"
 }
