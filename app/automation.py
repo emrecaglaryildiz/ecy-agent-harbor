@@ -10,6 +10,7 @@ def schedule_tick(server, timestamp=None):
     stamp = time.time() if timestamp is None else timestamp
     with server.CONFIG_LOCK, server.connect() as db:
         db.execute('BEGIN IMMEDIATE')
+        if server.operations.dispatch_paused(db):return
         due = db.execute('SELECT * FROM schedules WHERE enabled=1 AND next_run<=? ORDER BY next_run', (stamp,)).fetchall()
         for row in due:
             next_run = stamp + row['interval_minutes'] * 60

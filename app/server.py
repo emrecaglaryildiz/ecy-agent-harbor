@@ -12,7 +12,7 @@ import uuid
 import sys
 from datetime import datetime, timezone
 from .time_utils import APP_TIMEZONE, local_day, day_window
-from . import platform, security, mcp_registry, mfa, playbooks, incidents, privacy, lab, operations, health, access
+from . import platform, security, mcp_registry, mfa, playbooks, incidents, privacy, lab, operations, health, access, audit
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -70,9 +70,10 @@ def connect():
     return db
 
 
-def log(db, task_id, event, message):
+def log(db, task_id, event, message, audit_target=None):
     db.execute("INSERT INTO logs(task_id,event,message,created_at) VALUES(?,?,?,?)",
                (task_id, event, message, now()))
+    audit.emit(db,event,task_id,audit_target)
 
 
 def initialize():
@@ -133,6 +134,7 @@ def initialize():
         privacy.initialize(db)
         lab.initialize(db)
         operations.initialize(db)
+        audit.initialize(db)
         db.execute("CREATE TRIGGER IF NOT EXISTS run_finished AFTER UPDATE OF status ON runs WHEN NEW.status IN ('completed','failed','incomplete','cancelled') AND NEW.finished_at IS NULL BEGIN UPDATE runs SET finished_at=strftime('%Y-%m-%dT%H:%M:%f+00:00','now') WHERE id=NEW.id; END")
         # Legacy calls used a fixed 1,500-token cap and did not record finish_reason.
         db.execute("UPDATE runs SET status='incomplete',finish_reason='legacy_length_suspected',output_limit=1500 WHERE status='completed' AND finish_reason IS NULL AND output_tokens>=1500")
@@ -483,6 +485,7 @@ def _create_task(user, body, continuation_context="", resume_state="", retry_sta
     with (nullcontext(db) if existing else connect()) as db:
         if not existing:
             db.execute("BEGIN IMMEDIATE")
+        if operations.dispatch_paused(db):raise operations.DispatchPaused('Görev işleme bakım için duraklatıldı; daha sonra yeniden dene')
         options = workspace.task_options(db, user, body, sys.modules[__name__])
         if body.get("mask_sensitive") is True and body.get("allow_unmasked_images") is not True and any(db.execute("SELECT kind FROM files WHERE id=?",(fid,)).fetchone()[0]=="image" for fid in options[1]):raise ValueError("Görsel metni maskelenemez; görselleri çıkar veya maskelenmeden gönderilmesini açıkça onayla")
         privacy_seed=privacy.verify(sys.modules[__name__],db,user,body)
@@ -733,17 +736,23 @@ def process_task(tid):
         log(db, tid, status, "Ajan akışı sona erdi")
 
 
+def claim_task():
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if operations.dispatch_paused(db):return None
+        row=db.execute("SELECT id FROM tasks WHERE status='queued' ORDER BY created_at,id LIMIT 1").fetchone()
+        if not row:return None
+        tid=row[0]
+        db.execute("UPDATE tasks SET status='running',updated_at=? WHERE id=?",(now(),tid))
+        log(db,tid,'running','Kuyruktan alındı')
+        return tid
+
+
 def worker():
     while not STOP.is_set():
         tid = None
         try:
-            with connect() as db:
-                db.execute("BEGIN IMMEDIATE")
-                row = db.execute("SELECT id FROM tasks WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
-                if row:
-                    tid = row[0]
-                    db.execute("UPDATE tasks SET status='running',updated_at=? WHERE id=?", (now(), tid))
-                    log(db, tid, "running", "Kuyruktan alındı")
+            tid=claim_task()
             if tid:
                 process_task(tid)
         except Exception:
@@ -788,6 +797,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def setup(self):
         super().setup()
+        self.request_id=secrets.token_hex(16)
+        audit.CONTEXT.set(None)
         self.connection.settimeout(float(os.getenv('HTTP_READ_TIMEOUT', '15')))
         self._header_timer = threading.Timer(float(os.getenv('HTTP_HEADER_DEADLINE','15')), self._abort_headers)
         self._header_timer.daemon=True; self._header_timer.start()
@@ -798,6 +809,7 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:pass
 
     def finish(self):
+        audit.CONTEXT.set(None)
         if hasattr(self,'_header_timer'):self._header_timer.cancel()
         try:super().finish()
         except (OSError,TimeoutError):pass
@@ -820,6 +832,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def headers_common(self, content_type):
+        self.send_header("X-Request-ID",self.request_id)
         self.send_header("Content-Type", content_type)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
@@ -864,6 +877,7 @@ class Handler(BaseHTTPRequestHandler):
                 authenticated=True
                 with connect() as db:
                     access.preflight(db,user,path,self.path)
+                    if audit.handle_get(self,user,path,db,sys.modules[__name__]):return
                     if access.handle_get(self,user,path,db,sys.modules[__name__]):return
                     if path == '/api/security/posture':
                         if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
@@ -938,7 +952,7 @@ class Handler(BaseHTTPRequestHandler):
                 static[path] = ('brand.svg', 'image/svg+xml')
             if path == '/locales/en.json':
                 static[path] = ('locales/en.json', 'application/json; charset=utf-8')
-            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js', '/mcp.js', '/playbooks.js', '/incidents.js', '/privacy.js', '/lab.js', '/operations.js', '/project-access.js'):
+            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js', '/mcp.js', '/playbooks.js', '/incidents.js', '/privacy.js', '/lab.js', '/operations.js', '/project-access.js', '/audit.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
                 return self.respond(404, {"error": "Bulunamadı"})
@@ -996,10 +1010,12 @@ class Handler(BaseHTTPRequestHandler):
                 token = self.headers.get("Authorization", "")
                 if not token.startswith("Bearer "):
                     raise PermissionError("Webhook yetkisi geçersiz")
+                audit.begin(self,{'id':'webhook'})
                 result = platform.receive_webhook(sys.modules[__name__], path.rsplit("/",1)[-1], token[7:], self.headers.get("Idempotency-Key", ""), body)
                 return self.respond(200 if result["replayed"] else 201, result)
             if path == "/api/setup":
                 security.authorize_bootstrap(sys.modules[__name__],body)
+                audit.begin(self,{'id':'admin'},body)
                 set_password("admin", body.get("password"), first_setup=True)
                 return self.respond(201, {"ok": True})
             if path == "/api/login":
@@ -1021,6 +1037,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise PermissionError("Rol veya parola hatalı")
                     with SESSION_LOCK:
                         LOGIN_ATTEMPTS.pop(attempt_key, None)
+                audit.begin(self,{'id':uid})
+                with connect() as login_db:audit.emit(login_db,'login_succeeded')
                 sid, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
                 with SESSION_LOCK:
                     expired = [k for k, v in SESSIONS.items() if v["expires"] < time.time()]
@@ -1032,6 +1050,7 @@ class Handler(BaseHTTPRequestHandler):
                 secure = "; Secure" if os.getenv("COOKIE_SECURE") == "1" else ""
                 return self.respond(200, {"ok": True}, "harbor=" + sid + "; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800" + secure)
             user, session = self.user()
+            audit.begin(self,user,body)
             with connect() as scope_db:access.preflight(scope_db,user,path,self.path,body)
             if access.handle_post(self,user,path,body,sys.modules[__name__]):return
             if mfa.handle_post(self,user,path,body,sys.modules[__name__]):
@@ -1081,6 +1100,7 @@ class Handler(BaseHTTPRequestHandler):
                 set_password(uid, body.get("password"))
                 return self.respond(200, {"ok": True, "reauthenticate": uid == user["id"]})
             if path == "/api/logout":
+                with connect() as logout_db:audit.emit(logout_db,'logout')
                 with SESSION_LOCK:
                     for key in [k for k, v in SESSIONS.items() if v is session]:
                         SESSIONS.pop(key, None)
@@ -1137,6 +1157,8 @@ class Handler(BaseHTTPRequestHandler):
                     log(db, tid, "cancelled", "İptal edildi; başlamış sağlayıcı çağrıları tamamlanabilir")
                 return self.respond(200, {"ok": True})
             return self.respond(404, {"error": "Endpoint bulunamadı"})
+        except operations.DispatchPaused as exc:
+            self.respond(503,{'error':str(exc),'code':'dispatch_paused'})
         except PermissionError as exc:
             self.respond(403, {"error": str(exc)})
         except ValueError as exc:

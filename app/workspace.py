@@ -248,7 +248,7 @@ def handle_post(handler, user, path, body, server):
             changed = db.execute("UPDATE notifications SET status='pending',error=NULL WHERE id=? AND status IN ('failed','unknown')", (body.get('id'),)).rowcount
             if not changed:
                 raise ValueError('Yeniden denenebilir teslimat yok')
-        server.log(db, None, 'workspace_updated', path.rsplit('/', 1)[-1] + ' · ' + user['id'])
+        server.log(db, None, 'workspace_updated', path.rsplit('/', 1)[-1] + ' · ' + user['id'],audit_target=body.get('id') or ident)
     handler.respond(201, {'id': ident, 'ok': True}); return True
 
 

@@ -8,11 +8,19 @@ import time
 from urllib.error import HTTPError,URLError
 
 class CircuitOpen(RuntimeError):pass
+class DispatchPaused(RuntimeError):pass
+
+
+def dispatch_paused(db):
+    return bool(db.execute('SELECT paused FROM dispatch_control WHERE id=1').fetchone()[0])
+
 
 
 def initialize(db):
     db.executescript('''CREATE TABLE IF NOT EXISTS provider_circuits(id TEXT PRIMARY KEY,failures INTEGER NOT NULL,open_until REAL NOT NULL,lease_until REAL NOT NULL,last_failure REAL NOT NULL);
     CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY,name TEXT NOT NULL,hardware TEXT NOT NULL,token_hash TEXT NOT NULL,enabled INTEGER NOT NULL,last_seen REAL,metrics TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL);''')
+    db.execute("CREATE TABLE IF NOT EXISTS dispatch_control(id INTEGER PRIMARY KEY CHECK(id=1),paused INTEGER NOT NULL CHECK(paused IN (0,1)),changed_by TEXT NOT NULL,changed_at TEXT NOT NULL)")
+    db.execute("INSERT OR IGNORE INTO dispatch_control VALUES(1,0,'system','')")
     db.execute('UPDATE provider_circuits SET lease_until=0,open_until=max(open_until,?) WHERE lease_until>0',(time.time()+60,))
 
 
@@ -87,14 +95,29 @@ def handle_get(handler,user,path,db,server):
     clause,params=server.access.sql(user,'tasks.project_id')
     counts={r['status']:r['n'] for r in db.execute('SELECT status,count(*) n FROM tasks WHERE '+clause+' GROUP BY status',params)}
     oldest=db.execute("SELECT min(created_at) FROM tasks WHERE status='queued' AND "+clause,params).fetchone()[0]
-    handler.respond(200,{'nodes':nodes,'providers':providers,'counts':counts,'oldest_queued_at':oldest,'server_time':now});return True
+    control=dict(db.execute('SELECT paused,changed_by,changed_at FROM dispatch_control WHERE id=1').fetchone());control['paused']=bool(control['paused'])
+    live_runs=db.execute("SELECT count(*) FROM runs WHERE status='running'").fetchone()[0]
+    live_tasks=db.execute("SELECT count(*) FROM tasks WHERE status='running'").fetchone()[0]
+    # Only administrators see global drain counts; other roles keep scoped queue metrics.
+    control['running']=max(live_runs,live_tasks) if user['role']=='admin' else None
+    control['drained']=control['paused'] and live_runs==0 and live_tasks==0 if user['role']=='admin' else None
+    handler.respond(200,{'dispatch':control,'nodes':nodes,'providers':providers,'counts':counts,'oldest_queued_at':oldest,'server_time':now});return True
 
 
 def handle_post(handler,user,path,body,server):
-    if path not in ('/api/operations/nodes','/api/operations/nodes/toggle','/api/operations/nodes/delete','/api/operations/reset'):return False
+    if path not in ('/api/operations/nodes','/api/operations/nodes/toggle','/api/operations/nodes/delete','/api/operations/reset','/api/operations/dispatch'):return False
     if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
     with server.connect() as db:
-        if path=='/api/operations/nodes':
+        if path=='/api/operations/dispatch':
+            db.execute('BEGIN IMMEDIATE')
+            current=dispatch_paused(db)
+            if type(body.get('paused')) is not bool or type(body.get('expected_paused')) is not bool:raise ValueError('Kuyruk durumu için gerçek boolean değerleri gerekli')
+            if body['expected_paused']!=current:raise ValueError('Kuyruk durumu değişti; yenileyip tekrar dene')
+            if body['paused']!=current:
+                db.execute('UPDATE dispatch_control SET paused=?,changed_by=?,changed_at=? WHERE id=1',(int(body['paused']),user['id'],server.now()))
+                server.log(db,None,'dispatch_paused' if body['paused'] else 'dispatch_resumed','Görev işleme durumu değişti')
+            data={'ok':True,'paused':body['paused']}
+        elif path=='/api/operations/nodes':
             name=server.platform.text(body,'name',100);hardware=server.platform.text(body,'hardware',200,False)
             if db.execute('SELECT count(*) FROM nodes').fetchone()[0]>=50:raise ValueError('En fazla 50 düğüm kaydedilebilir')
             ident=secrets.token_hex(16);token=secrets.token_urlsafe(32)
@@ -108,5 +131,5 @@ def handle_post(handler,user,path,body,server):
             db.execute('DELETE FROM nodes WHERE id=?',(body.get('id'),));data={'ok':True}
         else:
             db.execute('UPDATE nodes SET enabled=? WHERE id=?',(int(body.get('enabled') is True),body.get('id')));data={'ok':True}
-        server.log(db,None,'operations_configured',path+' · '+user['id'])
+        if path!='/api/operations/dispatch':server.log(db,None,'operations_configured',path+' · '+user['id'])
     handler.respond(200,data);return True

@@ -47,6 +47,7 @@ def create(server,password):
                 archive.write(path,'uploads/'+fid)
             for path in (root/'artifacts').glob('*.txt'):
                 archive.write(path,'artifacts/'+path.name)
+        server.audit.emit(lock,'backup_created')
         raw=buffer.getvalue()
         if len(raw)>MAX_BYTES:raise ValueError('Yedek çok büyük; çevrimdışı dosya yedeği kullan')
     return MAGIC+salt+fernet.encrypt(raw)

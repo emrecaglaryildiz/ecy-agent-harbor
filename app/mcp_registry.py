@@ -116,6 +116,7 @@ def prepare(server,user,sid,name,arguments,task_id=None,auto=False,revision=None
         except Exception:raise ValueError('MCP araç argümanları şemaya uymuyor') from None
         ident=uuid.uuid4().hex;status='approved' if auto else 'pending'
         db.execute('INSERT INTO mcp_calls VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(ident,sid,name,user['id'],task_id,json.dumps(arguments),status,None,None,row['revision'],server.now(),server.now()))
+        server.audit.emit(db,'mcp_prepared',task_id,ident)
     return ident
 
 
@@ -183,9 +184,11 @@ def handle_post(handler,user,path,body,server):
         with server.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             if not db.execute("UPDATE mcp_calls SET status='approved',updated_at=? WHERE id=? AND status='pending'",(server.now(),ident)).rowcount:raise ValueError('Bekleyen MCP çağrısı yok')
+            server.audit.emit(db,'mcp_approved',target_id=ident)
         result=execute(server,ident);handler.respond(200,result);return True
     if path=='/api/mcp/reject':
-        with server.connect() as db:db.execute("UPDATE mcp_calls SET status='rejected',updated_at=? WHERE id=? AND status='pending'",(server.now(),ident))
+        with server.connect() as db:
+            if db.execute("UPDATE mcp_calls SET status='rejected',updated_at=? WHERE id=? AND status='pending'",(server.now(),ident)).rowcount:server.audit.emit(db,'mcp_rejected',target_id=ident)
         handler.respond(200,{'ok':True});return True
     if not row:raise ValueError('MCP sunucusu bulunamadı')
     if path=='/api/mcp/discover':
