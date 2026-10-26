@@ -132,3 +132,5 @@ Tasks, templates and webhook configuration accept `knowledge_ids` explicitly; cr
 `GET /api/platform/backup/status`: administrator-only backup readiness, queue/in-flight counters and dispatch pause status. Offline archive verification and recovery behavior: [RECOVERY-DRILLS.md](RECOVERY-DRILLS.md).
 
 Data lifecycle: admin-only `GET /api/platform/storage` and `POST /api/platform/retention/preview` provide metadata inventory and project-scoped age planning without deletion. See [DATA-LIFECYCLE.md](DATA-LIFECYCLE.md).
+
+MCP governance: admin-only `GET /api/mcp/history?server_id=<id>&before=<revision>` returns 20 metadata revisions. Mutation endpoints accept optional integer `expected_revision`; the current UI sends it. See [MCP-GOVERNANCE.md](MCP-GOVERNANCE.md).
