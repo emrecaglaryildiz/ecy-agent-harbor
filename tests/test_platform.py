@@ -172,7 +172,7 @@ class PlatformTests(unittest.TestCase):
         self.client.request('/api/platform/webhooks',{'name':'Hook','config':self.config()})
         self.client.request('/api/schedules',{'name':'Schedule','interval_minutes':60,'config':self.config()})
         with server.connect() as db:
-            db.execute("INSERT INTO integrations VALUES('telegram',?)",(json.dumps({'enabled':True,'token':'fake'}),))
+            db.execute("INSERT INTO integrations VALUES('telegram',?)",(json.dumps({'enabled':True,'token':server.encrypt(server.DB_PATH,'fake')}),))
         content=backup.create(server,'disposable-password-123')
         with tempfile.TemporaryDirectory() as temp:
             target=backup.restore(content,'disposable-password-123',Path(temp)/'restored')
