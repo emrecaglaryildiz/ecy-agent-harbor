@@ -36,3 +36,6 @@
 .privacy-options{border-top:1px solid var(--line);padding-top:14px;margin-top:18px}#context-source{max-width:100%;width:100%}#context-page{max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}#page-operations>.panel,#ops-nodes{margin-bottom:24px}[data-lab-rate] input,[data-lab-rate] textarea{width:100%}
 
 #workspace-dialog:has(.comparison-grid){width:min(1180px,96vw)}#workspace-dialog .comparison-grid .markdown-body{max-height:340px;overflow:auto}#workspace-dialog .comparison-grid .panel{min-width:0}
+.audit-hash {overflow-wrap:anywhere;word-break:break-all}
+#audit-older[hidden]{display:none}#audit-list{display:grid;gap:16px;margin-top:20px}#audit-list dd{overflow-wrap:anywhere;margin-left:0}
+#dispatch-toggle[hidden]{display:none}
