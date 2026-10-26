@@ -152,6 +152,10 @@ def receive_webhook(server, ident, token, key, body):
 def handle_get(handler,user,path,db,server):
     if not path.startswith('/api/platform/'):
         return False
+    if path=='/api/platform/storage':
+        if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
+        from .storage import inventory
+        handler.respond(200,inventory(db,server.DB_PATH));return True
     if path=='/api/platform/backup/status':
         if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
         from .backup import readiness
@@ -209,6 +213,10 @@ def handle_post(handler,user,path,body,server):
     if not path.startswith('/api/platform/'):
         return False
     if user['role']=='viewer':raise PermissionError('Gözlemci bu ayarı değiştiremez')
+    if path=='/api/platform/retention/preview':
+        from .lifecycle import preview
+        with server.connect() as db:result=preview(db,user,body,server)
+        handler.respond(200,result);return True
     if path=='/api/platform/backup':
         if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
         from .backup import create

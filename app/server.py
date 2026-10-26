@@ -349,7 +349,7 @@ def delete_history(user, body):
             lab.capture(sys.modules[__name__],db,row["id"])
             # Keep only anonymous accounting so clearing history cannot reset spending limits.
             db.execute("INSERT INTO deleted_costs(id,day,amount,day_timezone) VALUES(?,?,?,?)", (uuid.uuid4().hex, local_day(row["created_at"]), row["cost"], APP_TIMEZONE))
-            (Path(DB_PATH).parent / "artifacts" / (row["id"] + ".txt")).unlink(missing_ok=True)
+            files.LocalStore(DB_PATH).remove("artifacts", row["id"])
             for table in ("logs", "approvals", "runs"):
                 db.execute("DELETE FROM " + table + " WHERE task_id=?", (row["id"],))
             db.execute("DELETE FROM tasks WHERE id=?", (row["id"],))
@@ -782,10 +782,8 @@ def decide(user, aid, decision):
             if row["tool"] not in ("artifact.write_text", "demo.write_artifact"):
                 raise ValueError("Araç izin listesinde değil")
             # Arguments are produced by the server. Filename is never taken from model/user text.
-            folder = Path(DB_PATH).parent / "artifacts"
-            folder.mkdir(exist_ok=True)
             output = task["synthesis"] or "\n\n".join(r[0] or "" for r in db.execute("SELECT output FROM runs WHERE task_id=? ORDER BY created_at", (task["id"],)))
-            (folder / (task["id"] + ".txt")).write_text(output, encoding="utf-8")
+            files.LocalStore(DB_PATH).write("artifacts", task["id"], output.encode("utf-8"), replace=True)
             status = "approved"
         db.execute("UPDATE approvals SET status=?,decided_by=?,decided_at=? WHERE id=?", (status, user["id"], now(), aid))
         db.execute("UPDATE tasks SET status='completed',updated_at=? WHERE id=?", (now(), task["id"]))

@@ -136,7 +136,7 @@ def handle_get(handler, user, path, db, server):
             handler.respond(404, {'error': 'Dosya bulunamadı'}); return True
         query = parse_qs(urlparse(handler.path).query)
         if query.get('image') == ['1'] and row['kind'] == 'image':
-            content = (files.folder(server) / fid).read_bytes()
+            content = files.LocalStore(server.DB_PATH).read('uploads', fid)
             handler.send_response(200); handler.headers_common(row['mime'])
             handler.send_header('Cache-Control', 'no-store'); handler.send_header('Content-Length', str(len(content))); handler.end_headers(); handler.wfile.write(content); return True
         start = max(1, int(query.get('start', ['1'])[0]))
@@ -193,7 +193,7 @@ def handle_post(handler, user, path, body, server):
             if any(row['id'] in json.loads(r[0]).get('file_ids', []) for r in db.execute('SELECT config FROM schedules UNION ALL SELECT config FROM templates')):
                 raise ValueError('Dosya bir şablonda veya zamanlamada kullanılıyor')
             db.execute('DELETE FROM files WHERE id=?', (row['id'],))
-            (files.folder(server) / row['id']).unlink(missing_ok=True)
+            files.LocalStore(server.DB_PATH).remove('uploads', row['id'])
         elif path == '/api/templates':
             cfg = clean_config(body.get('config'), server)
             task_options(db, user, cfg, server)

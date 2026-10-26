@@ -6,6 +6,7 @@ import json
 import os
 import re
 import uuid
+from .storage import LocalStore
 from pathlib import Path
 
 MAX_FILE_BYTES = int(os.getenv('MAX_FILE_BYTES', str(32 * 1024 * 1024)))
@@ -14,9 +15,7 @@ IMAGE_TYPES = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
 
 
 def folder(server):
-    path = Path(server.DB_PATH).parent / 'uploads'
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    return LocalStore(server.DB_PATH).folder('uploads', create=True)
 
 
 def upload(server, user, body):
@@ -60,11 +59,8 @@ def upload(server, user, body):
         server.workspace.check_project(db, user, project_id,write=True)
         db.execute('INSERT INTO files(id,name,kind,mime,size,sha256,text,owner_id,project_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
                    (fid, name, kind, mime, len(raw), hashlib.sha256(raw).hexdigest(), text, user['id'], project_id, server.now()))
-    target = folder(server) / fid
     try:
-        fd = os.open(str(target), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-        with os.fdopen(fd, 'wb') as out:
-            out.write(raw)
+        LocalStore(server.DB_PATH).write('uploads', fid, raw)
     except Exception:
         with server.connect() as db:
             db.execute('DELETE FROM files WHERE id=?', (fid,))
@@ -95,7 +91,7 @@ def chunks(row, max_chars=16000):
 
 
 def image_part(server, row):
-    return {'type': 'image_url', 'image_url': {'url': 'data:' + row['mime'] + ';base64,' + base64.b64encode((folder(server) / row['id']).read_bytes()).decode()}}
+    return {'type': 'image_url', 'image_url': {'url': 'data:' + row['mime'] + ';base64,' + base64.b64encode(LocalStore(server.DB_PATH).read('uploads', row['id'])).decode()}}
 
 
 def evidence_instruction(row, first, last):
