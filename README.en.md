@@ -210,3 +210,9 @@ Isolated mock workspace with fictional data and example ratings; no real hardwar
 [Denetim kayıtları / Audit trail](docs/AUDIT.md): yöneticiye özel işlem geçmişi, JSONL arşivi ve bağımsız kontrol noktasıyla çevrimdışı doğrulama. / Admin-only administrative history, JSONL export and offline verification with an independently stored checkpoint.
 
 [Kalıcı bakım duraklatması / Persistent maintenance pause](docs/DISPATCH-CONTROL.md): yeni iş kabulünü ve kuyruktan alımı durdur; bekleyen işleri koruyarak açık seçimle devam et. / Pause admission and queue claims while preserving jobs, then explicitly resume.
+
+[Yedek ve geri yükleme provası / Backup & restore rehearsal](docs/RECOVERY-DRILLS.md): duraklatılmış kuyruğu koruyarak yedekle; dosya, kayıtlı anahtar ve denetim zincirini canlı verilere dokunmadan ayrı geçici kopyada doğrula. / Back up a paused queue and verify evidence, stored credentials and audit history in a disposable offline copy.
+
+![Restore rehearsal / Geri yükleme provası](docs/preview-recovery.png)
+
+Screenshot uses synthetic mock evidence and a paused test queue. / Görüntü sentetik mock kanıt ve duraklatılmış test kuyruğudur.
