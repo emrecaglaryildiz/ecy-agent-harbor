@@ -17,6 +17,10 @@ ID=re.compile(r'[a-f0-9]{32}\Z')
 def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True)
 def digest(value):return hashlib.sha256(canonical({k:value[k] for k in FIELDS}).encode()).hexdigest()
 def safe_id(value):return value if isinstance(value,str) and ID.fullmatch(value) else ''
+def safe_target(value):
+    if safe_id(value):return value
+    if isinstance(value,str) and re.fullmatch(r'(?:account:(?:admin|operator|viewer)|agent:(?:hermes|local|research|critic)|project:[a-f0-9]{32}/member:(?:admin|operator|viewer)/access:(?:read|write|none))',value):return value
+    return ''
 def safe_actor(value):return value if value in ('admin','operator','viewer','system','unknown','webhook') or safe_id(value) else 'unknown'
 
 
@@ -33,6 +37,10 @@ def begin(handler,user,body=None):
     target=safe_id(body.get('id')) or safe_id(body.get('project_id'))
     if not target:
         target=next((safe_id(p) for p in path.split('/') if safe_id(p)),'')
+    if path=='/api/access/password' or path.startswith('/api/security/mfa/'):
+        account=body.get('user',user['id'])
+        if account in ('admin','operator','viewer'):target='account:'+account
+    if path.startswith('/api/agents/') and not target and len(path.split('/'))>3 and path.split('/')[3] in ('hermes','local','research','critic'):target='agent:'+path.split('/')[3]
     CONTEXT.set({'actor_id':safe_actor(user['id']),'request_id':handler.request_id,'route':route(path),'target_id':target})
 
 
@@ -58,7 +66,7 @@ def emit(db,event,task_id=None,target_id=None):
     head=db.execute('SELECT seq,hash FROM audit_events ORDER BY seq DESC LIMIT 1').fetchone()
     row={'seq':head[0]+1 if head else 1,'stream_id':db.execute('SELECT stream_id FROM audit_meta WHERE id=1').fetchone()[0],
          'created_at':dt.datetime.now(dt.timezone.utc).isoformat(),'actor_id':safe_actor(context.get('actor_id','system')),'initiator_id':initiator,
-         'event':event,'request_id':safe_id(context.get('request_id')),'route':context.get('route','background'),'target_id':safe_id(target_id) or context.get('target_id',''),'task_id':task_id,'previous_hash':head[1] if head else ZERO}
+         'event':event,'request_id':safe_id(context.get('request_id')),'route':context.get('route','background'),'target_id':safe_target(target_id) or safe_target(context.get('target_id','')),'task_id':task_id,'previous_hash':head[1] if head else ZERO}
     row['hash']=digest(row)
     db.execute('INSERT INTO audit_events('+','.join(FIELDS)+',hash) VALUES('+','.join('?' for _ in range(len(FIELDS)+1))+')',tuple(row[k] for k in FIELDS)+(row['hash'],))
 

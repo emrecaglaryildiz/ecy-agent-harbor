@@ -110,7 +110,7 @@ def handle_post(handler,user,path,body,server):
         if grant=='none':db.execute('DELETE FROM project_members WHERE project_id=? AND user_id=?',(pid,uid))
         else:db.execute('INSERT OR REPLACE INTO project_members VALUES(?,?,?)',(pid,uid,grant))
         cancel_disallowed(server,db,pid,user['id'])
-        server.log(db,None,'project_membership_changed',pid+' · '+uid+' · '+grant+' · '+user['id'],audit_target=pid)
+        server.log(db,None,'project_membership_changed',pid+' · '+uid+' · '+grant+' · '+user['id'],audit_target='project:'+pid+'/member:'+uid+'/access:'+grant)
     handler.respond(200,{'ok':True});return True
 
 
