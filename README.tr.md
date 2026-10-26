@@ -284,3 +284,7 @@ Isolated mock workspace with fictional data and example ratings; no real hardwar
 [Proje üyeliği / Project membership](docs/PROJECT-ACCESS.md): private-by-default projects, read/edit grants and revocation.
 
 ![Project membership / Proje üyeliği](docs/preview-project-access.png)
+
+[Denetim kayıtları / Audit trail](docs/AUDIT.md): yöneticiye özel işlem geçmişi, JSONL arşivi ve bağımsız kontrol noktasıyla çevrimdışı doğrulama. / Admin-only administrative history, JSONL export and offline verification with an independently stored checkpoint.
+
+[Kalıcı bakım duraklatması / Persistent maintenance pause](docs/DISPATCH-CONTROL.md): yeni iş kabulünü ve kuyruktan alımı durdur; bekleyen işleri koruyarak açık seçimle devam et. / Pause admission and queue claims while preserving jobs, then explicitly resume.
