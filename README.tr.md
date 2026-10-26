@@ -300,3 +300,9 @@ Screenshot uses synthetic mock evidence and a paused test queue. / Görüntü se
 ![Storage & retention / Depolama ve saklama](docs/preview-lifecycle.png)
 
 Synthetic mock workspace; no real files, keys or retention deletion. / Sentetik test alanı; gerçek dosya, anahtar veya saklama silmesi kullanılmadı.
+
+[MCP revision governance / MCP sürüm yönetişimi](docs/MCP-GOVERNANCE.md): per-connection history, stale edit rejection and definition-change permission review. / Bağlantı sürüm geçmişi, eski ekran değişikliklerinin reddi ve araç tanımı değişince izin incelemesi.
+
+![MCP revision history / MCP sürüm geçmişi](docs/preview-mcp-revisions.png)
+
+Synthetic disconnected MCP history; no real tools or credentials. / Bağlantısı kapalı sentetik MCP geçmişi; gerçek araç veya anahtar kullanılmadı.
