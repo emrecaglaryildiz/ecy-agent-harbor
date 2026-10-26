@@ -152,6 +152,10 @@ def receive_webhook(server, ident, token, key, body):
 def handle_get(handler,user,path,db,server):
     if not path.startswith('/api/platform/'):
         return False
+    if path=='/api/platform/backup/status':
+        if user['role']!='admin':raise PermissionError('Yönetici erişimi gerekli')
+        from .backup import readiness
+        handler.respond(200,readiness(db));return True
     query=parse_qs(urlparse(handler.path).query)
     pid=query.get('project_id',['__general'])[0]
     pid=None if pid=='__general' else pid

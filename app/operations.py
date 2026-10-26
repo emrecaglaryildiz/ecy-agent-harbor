@@ -16,11 +16,15 @@ def dispatch_paused(db):
 
 
 
+def initialize_dispatch(db):
+    db.execute("CREATE TABLE IF NOT EXISTS dispatch_control(id INTEGER PRIMARY KEY CHECK(id=1),paused INTEGER NOT NULL CHECK(paused IN (0,1)),changed_by TEXT NOT NULL,changed_at TEXT NOT NULL)")
+    db.execute("INSERT OR IGNORE INTO dispatch_control VALUES(1,0,'system','')")
+
+
 def initialize(db):
     db.executescript('''CREATE TABLE IF NOT EXISTS provider_circuits(id TEXT PRIMARY KEY,failures INTEGER NOT NULL,open_until REAL NOT NULL,lease_until REAL NOT NULL,last_failure REAL NOT NULL);
     CREATE TABLE IF NOT EXISTS nodes(id TEXT PRIMARY KEY,name TEXT NOT NULL,hardware TEXT NOT NULL,token_hash TEXT NOT NULL,enabled INTEGER NOT NULL,last_seen REAL,metrics TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL);''')
-    db.execute("CREATE TABLE IF NOT EXISTS dispatch_control(id INTEGER PRIMARY KEY CHECK(id=1),paused INTEGER NOT NULL CHECK(paused IN (0,1)),changed_by TEXT NOT NULL,changed_at TEXT NOT NULL)")
-    db.execute("INSERT OR IGNORE INTO dispatch_control VALUES(1,0,'system','')")
+    initialize_dispatch(db)
     db.execute('UPDATE provider_circuits SET lease_until=0,open_until=max(open_until,?) WHERE lease_until>0',(time.time()+60,))
 
 

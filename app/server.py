@@ -952,7 +952,7 @@ class Handler(BaseHTTPRequestHandler):
                 static[path] = ('brand.svg', 'image/svg+xml')
             if path == '/locales/en.json':
                 static[path] = ('locales/en.json', 'application/json; charset=utf-8')
-            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js', '/mcp.js', '/playbooks.js', '/incidents.js', '/privacy.js', '/lab.js', '/operations.js', '/project-access.js', '/audit.js'):
+            if path in ('/vendor/marked.umd.js', '/vendor/purify.min.js', '/markdown.js', '/i18n.js', '/time.js', '/platform.js', '/mcp.js', '/playbooks.js', '/incidents.js', '/privacy.js', '/lab.js', '/operations.js', '/project-access.js', '/audit.js', '/recovery.js'):
                 static[path] = (path.lstrip('/'), 'text/javascript; charset=utf-8')
             if path not in static:
                 return self.respond(404, {"error": "Bulunamadı"})
