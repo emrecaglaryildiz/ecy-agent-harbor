@@ -128,3 +128,5 @@ All `/api/platform/*` endpoints require a session; POST also requires CSRF. Proj
 | POST | `/api/hooks/ID` | scoped bearer token, JSON `{prompt}`, mandatory `Idempotency-Key`; 201 first call, 200 replay |
 
 Tasks, templates and webhook configuration accept `knowledge_ids` explicitly; cross-project knowledge is rejected. Agent settings accept `capabilities:{vision:true|false|null,tools:true|false|null,context_tokens:number|null,specialties:[strings]}`. Run responses now include `finished_at`, `model_snapshot`, `provider_snapshot`, `agent_name_snapshot`; legacy snapshots may be null. Full backup/restore behavior and webhook contracts: [PLATFORM.md](PLATFORM.md).
+
+`GET /api/platform/backup/status`: administrator-only backup readiness, queue/in-flight counters and dispatch pause status. Offline archive verification and recovery behavior: [RECOVERY-DRILLS.md](RECOVERY-DRILLS.md).

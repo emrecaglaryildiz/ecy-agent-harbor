@@ -30,7 +30,7 @@ In **Management → Agents & API**, edit vision support, tool calling, context c
 
 **Administrator only:** Management → Backup downloads `.ecybak`, protected by a separate 12–256 character backup password. PBKDF2-HMAC-SHA256 (600,000 iterations, random salt) derives a Fernet authenticated-encryption key. It includes a consistent SQLite snapshot, uploaded evidence, saved report artifacts and `master.key`. Database-stored credentials are therefore portable inside the encrypted archive. `.env` and environment-provided API keys are excluded. Keep the backup password separately; there is no recovery backdoor. Do not upload encrypted backups to the source repository.
 
-Wait for queued/running tasks to finish before exporting; the exporter refuses active work to protect streaming checkpoints. The in-memory exporter supports up to 1 GiB compressed snapshots. Larger installations should stop the service and use an offline filesystem backup. An upload still being committed can require retrying the backup.
+Wait for in-flight work to finish. Queued jobs may be included when dispatch is explicitly paused; the exporter rechecks readiness under a database write lock. See [restore rehearsals](RECOVERY-DRILLS.md) for file/key/audit validation. The in-memory exporter supports up to 1 GiB compressed snapshots. Larger installations should stop the service and use an offline filesystem backup. An upload still being committed can require retrying the backup.
 
 Restore on a trusted machine, using project dependencies:
 
@@ -38,7 +38,7 @@ Restore on a trusted machine, using project dependencies:
 python3 -m app.backup restore /path/to/ecy-harbor.ecybak --destination ./restored-data
 ```
 
-The command prompts for the password; it must not be put in shell arguments. It refuses an existing destination, checks authenticated contents, archive paths, SQLite integrity and uploaded-file presence. Existing data is never overwritten. Stop the app, set `DATABASE_PATH` to the new directory's `harbor.db`, then start it again. Schedules and Telegram are disabled; webhook tokens are disabled and require creating fresh connections. Pending jobs become incomplete and pending tool approvals are rejected. Review and deliberately re-enable scheduled work. Restore environment-only keys separately. For Docker, use a new data volume/directory and point the database path there; container restoration was not runtime-tested on this host.
+The command prompts for the password; it must not be put in shell arguments. It refuses an existing destination, checks authenticated contents, archive paths, SQLite integrity and uploaded-file presence. Existing data is never overwritten. Stop the app, set `DATABASE_PATH` to the new directory's `harbor.db`, then start it again. Schedules and Telegram are disabled; webhook tokens are disabled and require creating fresh connections. Pending jobs become incomplete, pending tool approvals are rejected and dispatch starts paused. Use `python3 -m app.backup verify archive.ecybak` for a disposable offline rehearsal before switching data directories. Review and deliberately re-enable scheduled work. Restore environment-only keys separately. For Docker, use a new data volume/directory and point the database path there; container restoration was not runtime-tested on this host.
 
 ## 8. Incoming webhooks / Gelen webhook bağlantıları
 
