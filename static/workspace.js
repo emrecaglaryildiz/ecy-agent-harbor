@@ -73,7 +73,7 @@ document.addEventListener('click',async e=>{
  }catch(err){toast(err.message)}
 });
 document.addEventListener('change',e=>{if(e.target.dataset.attachFile){const id=e.target.dataset.attachFile;selectedFiles=e.target.checked?[...new Set([...selectedFiles,id])]:selectedFiles.filter(f=>f!==id);$('#attachment-count').textContent=selectedFiles.length+' dosya seçili'}});
-$('#project-scope').onchange=async()=>{currentProject=$('#project-scope').value;selectedFiles=[];workspaceSignature='';await refresh(true);await refreshWorkspace(true)};
+$('#project-scope').onchange=async()=>{currentProject=$('#project-scope').value;selectedFiles=[];workspaceSignature='';if(typeof refreshStorage==='function')refreshStorage();await refresh(true);await refreshWorkspace(true)};
 $('#file-upload').onchange=e=>uploadFiles(e.target.files);$('#library-upload').onchange=e=>uploadFiles(e.target.files);
 $('#close-workspace').onclick=()=>$('#workspace-dialog').close();
 
